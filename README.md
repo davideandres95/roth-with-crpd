@@ -65,7 +65,7 @@ ip routes # Shows the ip routes known to this vnf container
 
 ### Virtual ethernet pairs (veth)
 The veth devices are virtual Ethernet devices. They can act as tunnels between network namespaces to create a bridge to a physical network device in another namespace, but can also be used as standalone network devices.
-Source and further information: [http://man7.org/linux/man-pages/man4/veth.4.html](veth - Virtual Ethernet Device)
+Source and further information: [veth - Virtual Ethernet Device](http://man7.org/linux/man-pages/man4/veth.4.html)
 
 ## Host mode
 In this mode, any interface route from linux kernel gets distributed via netlink to the cRPD instance running in host networking mode. There is no need to configure any addresses within cRPD-CLI (except family ISO). Any IPv4/IPv6 addressing is derived from the host's kernel. In other words, all the host's default namespace will be exposed to the cRPD but will not be configured by it.
@@ -84,7 +84,7 @@ To stop the cRPD:
 ```bash
 docker stop crpd01
 ```
-###Installing the license
+### Installing the license
 If this is the first time you run cRPD in this testbed, you need to install the cRPD license key. There are several options, the easiest is to launch the cli via `docker exec -it crpd cli` and then copy-pasting the license code 'request system license add terminal'. Another option is to pre-provision it on the config volume that is provided when running the container. To find the mounting point run `docker volume ls` and then `docker volume inspect <vol_name>`, which will display the path where the volume files are. Last, copy the license file to the `./license` folder.
 
 ## Network mode
@@ -117,7 +117,7 @@ ip link set <interface> netns <namespace>
 ```
 
 
-##Use case description
+## Use case description
 
 ### Attach cRPD to an specific VNF
 As more complete example, below, a bridge is created where a physical(logical) interface and a veth endpoint are connected. The other endpoint of the veth interface is moved to the VNF's namespace
@@ -197,5 +197,5 @@ useage: create_crpd_veths.sh <docker_instance> <interface> <ip>
 
 ## Known Issues
 
-### IFL is not detected by cRPD on Networking mode
-### BFD repports an error 
+1. IFL is not detected by cRPD on Networking mode
+2. BFD repports an error 
