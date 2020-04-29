@@ -2,13 +2,14 @@
 Code authors: Christian Graf(cgraf@juniper.net) and David de Andres(ddeandres@juniper.net)
 
 ## Pre-requisites
-+ Ubuntu 16.04 baremetal or VM. Other distrubtions and versions might work too, though not verified
++ Ubuntu 18.04
++ see: https://www.juniper.net/documentation/en_US/crpd/topics/reference/general/crr-system-requirement-docker.html
 + Docker Engine. E.g. by following the instructions [https://docs.docker.com/engine/install/ubuntu/](Install Doker Engine on Ubuntu)
 + Juniper cRPD. Download and import cRPD from the Juniper support downloads page. Currently using version 19.4R1.10.
 + Juniper cRPD license key (required to run BGP here)
 
 ## Table of contents
-1. Introduction
+1. Introduction and Usecase Overview
 2. Useful commands and information
    - Virtual ethernet pairs
 3. Host Mode
@@ -29,14 +30,52 @@ cRPD is Juniper routing protocol stack decoupled from JUNOS and packaged for Lin
 + Automation, Telemetry,  Programmability
 + Supports Kubernetes, Docker swarm
 
-The cRPD can be instantiated in two modes. Either in host mode or networking mode. While in host mode only one instance of cRPD should be running to avoid unpredictable and erratic behavior. On the contrary, there is no limit on the number of cRPD instances that can run simultaneously in networking mode. To be said is also that one instance in host mode can co-exist with multiple other instances running on networking mode.
+### General usecases for cRPD
+- cRPD can be deployed as BGP Route-Reflector/Route-Server
+- cRPD might be used as Routing-Daemon on a Whitebox-switch or some custom hardware to built your own router
+- cRPD might be used for the "Routing on the Host (RotH)" purpose. This is what is covered in this doc.
 
+When looking at the RotH usecase, the interested reader might ask for what good reason the cRPD might be beneficial?
+
+First of all, when the Host acts as router, then there is no need to run VRRP, MC-lLAG or Virtual-Chassis to provide redundancy towards the attached host. All VRRP, MC-lAG and Virtual-Chassis require a dependency between the invloved switches/routers which add burden for operations and issues with e.g. an insane state for MC-LAG (via ICCP-Protocol) might affect many hosts.
+
+So a solution would be to enable BGP-routing on the host via cRPD and VRRP, MC-LAG and Virtual-chassis could be removed while the host still has full redundant ECMP-capable uplinks.
+
+
+Another aspect is effectively a reverse-perspective VRRP: 
+- to know if their various upstreams are alive.
+- simply want a default-route, perhaps with load balancing.
+- In some cases, have enough prefix data to provide for actual destination network failure detection
+
+Simple BGP solves these problems quite nicely, especially if coupled with BFD. Providing more prefix-data can be solved by subscribing via policy to receive «important destination»" .
+
+RoTH provide better ECMP-redundancy, while lowering complexity on the switches it is attached to.
+
+
+## RoTH deployment options
+
+- cRPD populating Hosts routing-table, where finally all VNF's can benefit from
+- cRPD populating a specific docker-containers routing-table
+- cRPD populating a KVM-guests routing-table
+- while not covered in this doc, cRPD can be used to build a network-topology to develop new configurations, prepare for testing and even run scaling-tests [TO-DO]
+
+The cRPD is agnostic to the linux namespace it is launched.
+When launched in the hosts default namespace, then cRPD populates the hosts routing-table, thus providing routing-knoweldge to the native TCP-/IP stack and all of the applications/hypervisors and finally VNF's can make use of it.
+
+It might be desired, that routing-knowledge shall only made available to specific docker-containersi. In such usecase the cRPD can be launched in the same network-namespace as the target docker-container.
+
+Finally, cRPD can be tight to a KVM-guest. In such case the KVM-guest must be able to launch itself docker-containers to start the cRPD.
+
+
+There is no hard-limit on the cRPD instances which can be launched on the Host.
+Only one cRPD instance shall run in the default namepsace and per each docker containers another instance of cRPD can be launched as well.
 This guide is covering these usecases:
 
-- cRPD routing-daemon assigned to the Host (where finally all VNF's benefit from)
-- cRPD attached to an specific VNF into an isolated namespace and move interfaces to it
-- run cRPD in a KVM-based VM in host mode and with SR-IOV enabled interfaces
-- [TO-DO] allow the creation of a demo-topology to develop and stage new network-designs 
+## add pics here
+
+
+[TO-DO]
+
 
 ## Useful comands and information
 
