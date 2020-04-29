@@ -1,14 +1,12 @@
-# Routing at the Host with Juniper's cRPD
+# Routing at the Host (RotH) with Juniper's cRPD
 Code authors: Christian Graf(cgraf@juniper.net) and David de Andres(ddeandres@juniper.net)
 
-## Pre-requisites
-+ Ubuntu 18.04
-+ see: https://www.juniper.net/documentation/en_US/crpd/topics/reference/general/crr-system-requirement-docker.html
-+ Docker Engine. E.g. by following the instructions [https://docs.docker.com/engine/install/ubuntu/](Install Doker Engine on Ubuntu)
-+ Juniper cRPD. Download and import cRPD from the Juniper support downloads page. Currently using version 19.4R1.10.
-+ Juniper cRPD license key (required to run BGP here)
+## Disclaimer
+use at own risk
+[TO-DO]
 
-## Table of contents
+
+# Table of contents
 1. Introduction and Usecase Overview
 2. Useful commands and information
    - Virtual ethernet pairs
@@ -30,10 +28,12 @@ cRPD is Juniper routing protocol stack decoupled from JUNOS and packaged for Lin
 + Automation, Telemetry,  Programmability
 + Supports Kubernetes, Docker swarm
 
-### General usecases for cRPD
+## General usecases for cRPD
 - cRPD can be deployed as BGP Route-Reflector/Route-Server
 - cRPD might be used as Routing-Daemon on a Whitebox-switch or some custom hardware to built your own router
 - cRPD might be used for the "Routing on the Host (RotH)" purpose. This is what is covered in this doc.
+
+### Why RotH
 
 When looking at the RotH usecase, the interested reader might ask for what good reason the cRPD might be beneficial?
 
@@ -72,9 +72,15 @@ Only one cRPD instance shall run in the default namepsace and per each docker co
 This guide is covering these usecases:
 
 ## add pics here
-
-
 [TO-DO]
+
+
+## Pre-requisites
++ Ubuntu 18.04
++ see: https://www.juniper.net/documentation/en_US/crpd/topics/reference/general/crr-system-requirement-docker.html
++ Docker Engine. E.g. by following the instructions [https://docs.docker.com/engine/install/ubuntu/](Install Doker Engine on Ubuntu)
++ Juniper cRPD. Download and import cRPD from the Juniper support downloads page. Currently using version 19.4R1.10.
++ Juniper cRPD license key (required to run BGP here)
 
 
 ## Useful comands and information
@@ -107,8 +113,15 @@ ip routes # Shows the ip routes known to this vnf container
 The veth devices are virtual Ethernet devices. They can act as tunnels between network namespaces to create a bridge to a physical network device in another namespace, but can also be used as standalone network devices.
 Source and further information: [veth - Virtual Ethernet Device](http://man7.org/linux/man-pages/man4/veth.4.html)
 
-## Host mode
-In this mode, any interface route from linux kernel gets distributed via netlink to the cRPD instance running in host networking mode. There is no need to configure any addresses within cRPD-CLI (except family ISO). Any IPv4/IPv6 addressing is derived from the host's kernel. In other words, all the host's default namespace will be exposed to the cRPD but will not be configured by it.
+# setting up the stuff
+
+## usecase 1 - RotH -cRPD populates the hosts default RIB
+The cRPD can be used to use the native TCP/Ip stack of the host and polulate the hosts routing-table via any protocol running on the cRPD.
+Technically the cRPD runs into the default-namespace of the Host, hence in the document we name it the "Host-Mode".
+
+In Host-Mode, any interface route from linux kernel gets distributed via netlink to the cRPD instance. There is no need to configure any addresses within cRPD-CLI (except family ISO [TO-DO] check MPLS). Any IPv4/IPv6 addressing is derived from the host's kernel. In other words, all the host's default namespace will be exposed to the cRPD but will not be configured by it.
+
+### getting cRPD launched in Host-mode
 
 To run cRPD in host mode:
 ``` bash
@@ -418,3 +431,7 @@ useage: create_crpd_veths.sh <docker_instance> <interface> <ip>
 
 1. IFL is not detected by cRPD on Networking mode
 2. BFD repports an error 
+
+
+# TODO
+how to pre-populate config-files
