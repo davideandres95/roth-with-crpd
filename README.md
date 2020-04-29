@@ -33,8 +33,8 @@ The cRPD can be instantiated in two modes. Either in host mode or networking mod
 
 This guide is covering these usecases:
 
-- assign the cRPD routing-daemon to the Host (where finally all VNF's benefit from)
-- attach a cRPD to an specific VNF into an isolated namespace and move interfaces to it
+- cRPD routing-daemon assigned to the Host (where finally all VNF's benefit from)
+- cRPD attached to an specific VNF into an isolated namespace and move interfaces to it
 - run cRPD in a KVM-based VM in host mode and with SR-IOV enabled interfaces
 - [TO-DO] allow the creation of a demo-topology to develop and stage new network-designs 
 
@@ -115,7 +115,21 @@ To add interfaces to the namespace:
 ```
 ip link set <interface> netns <namespace>
 ```
-
+Which will produce the below output if we run `show interfaces routing`:
+```
+lab@ubuntu-cg ~> docker exec -it crpd_alpine cli
+root@alpine> show interfaces routing
+Interface        State Addresses
+lsi              Up    MPLS  enabled
+                       ISO   enabled
+                       INET6 fe80::5068:27ff:fec4:9267
+vethi_53408      Up    MPLS  enabled
+                       ISO   enabled
+                       INET6 fe80::9cae:91ff:fefb:d5a1
+lo.0             Up    MPLS  enabled
+                       ISO   enabled
+                       INET  192.168.53.14
+```
 
 ## Use case description
 
@@ -171,7 +185,172 @@ sudo ip netns exec $pid ip addr add $ipadr dev ${veth_instance}
 ```
 
 ### cRPD on KVM and SR-IOV 
-[TO-DO]
+This use case covers KVM-based Virtual Machines with full-blown OS and its own routing-stack. The strength of this use case resides on their possibility to make use of more performant interfaces such as SR-IOV enabled ones. It is important to remark that for this use case, the cRPD runs on HOST mode as KVM enables a full OS.
+
+The interesting part of this use cases resides in having 2 interfaces as we can use them to demonstrate uplink redundancy (ECMP) with non-stop routing. Thanks to this, for example, it can be shown that a running ping will not undergo packet loss even if the used link turns down as all the traffic will be inmediately shifted to the other interface.
+
+For more information about KVM please refer to the [official page](https://www.linux-kvm.org/page/Main_Page).
+
+[To-Do] Describe the topology here used
+
+To launch a KVM guest:
+```bash
+virt-install --connect qemu:///system --virt-type kvm --name $name --ram $memory  --vcpus=$core --os-type linux --os-variant ubuntu16.04 --disk path=$image,format=qcow2 --disk cidata.iso,device=cdrom --
+import --network network=default –noautoconsole
+```
+[To-Do] explain steps for increasing diskpspace and cloudinit
+To verify that the KVM guest is running we make use of the (virsh tool)[https://libvirt.org/manpages/virsh.html#description]:
+```bash
+$ virsh list
+Id    Name                           State
+----------------------------------------------------
+2     ubuntu_server_guest            running
+```
+To prepare the interfaces on the host for SR-IOV with 8 VF, a (reboot non-persistent) option is to perform:
+```bash
+$ echo 8 | sudo tee -a  /sys/class/net/<interface1>/device/sriov_numvfs
+$ echo 8 | sudo tee -a  /sys/class/net/<interface2>/device/sriov_numvfs
+```
+A possibility to make this persistent is to include it in the `.bashrc` or configure it on `GRUB`. **Note**: to modify the number of VF an interim step to 0 is required.
+To verify that SR-IOV is enabled:
+```bash
+$ ls -l /sys/class/net/<interface1>/device/virtfn* | grep fn7
+lrwxrwxrwx 1 root root 0 Apr 23 12:14 /sys/class/net/ens8f0/device/virtfn7 -> ../0000:85:11.6
+$ ls -l /sys/class/net/<interface2>/device/virtfn* | grep fn7
+lrwxrwxrwx 1 root root 0 Apr 23 12:14 /sys/class/net/ens8f0/device/virtfn7 -> ../0000:85:11.7
+```
+The above `../0000:85:11.6` is really important and will be used in the next step to add the VF towards the guest. To do this, a convinient virsh xml file is created:
+
+```xml
+<!-------interface1----->
+<interface type='hostdev' managed='yes'>
+   <mac address="02:06:0A:81:11:6" />
+   <source>
+     <address domain="0x0000"  bus="0x85" slot="0x11" function="0x6" type="pci" />
+   </source>
+ </interface>
+
+<!-------interface2----->
+<interface type='hostdev' managed='yes'>
+   <mac address="02:06:0A:81:11:7" />
+   <source>
+     <address domain="0x0000"  bus="0x85" slot="0x11" function="0x7" type="pci" />
+   </source>
+ </interface
+```
+
+[TO-DO] check if  `<target dev='ens9'/>` sets the name on the host
+
+We can observe that the different parts of the output correspond to the domain, bus, slot and function which will enable virsh to connect it to the guest. Each interface is also provided with a unique MAC address. So at this point, the guest has an interface which must be configured:
+
+```bash
+sudo ifconfig <interface1> up
+sudo ifconfig <interface2> up
+sudo ip link add link <interface1> name <interface1>.<logical_unit> type vlan id <logical_unit>
+sudo ip link add link <interface2> name <interface2>.<logical_unit> type vlan id <logical_unit>
+sudo ip link set dev <interface1>.<logical_unit> up
+sudo ip link set dev <interface2>.<logical_unit> up
+sudo ip addr add 192.168.203.10/30 dev <interface1>.<logical_unit>
+sudo ip addr add 192.168.200.10/30 dev <interface2>.<logical_unit>
+sudo ip addr add 192.168.53.3 dev lo # for this demo a lo address is required
+```
+
+At this point, if we launch the cRPD container on HOST mode (as explained in the above section), all the interfaces should be known to him:
+```
+root@crpd01> show interfaces routing
+Interface        State Addresses
+...
+lo.0             Up    MPLS  enabled
+                       ISO   enabled
+                       INET  192.168.53.3
+ens9.143         Up    MPLS  enabled                <-- <interface1>.<logical_unit>
+                       ISO   enabled
+                       INET  192.168.203.10
+                       INET6 fe80::6:aff:fe81:1106
+ens9             Up    MPLS  enabled                <-- <interface1>
+                       ISO   enabled
+                       INET6 fe80::6:aff:fe81:1106
+ens10            Up    MPLS  enabled                <-- <interface2>
+                       ISO   enabled
+                       INET  192.168.122.156
+                       INET6 fe80::5054:ff:fec4:901c
+ens10.143        Up    MPLS  enabled                <-- <interface2>.<logical_unit>
+                       ISO   enabled
+                       INET  192.168.200.10
+                       INET6 fe80::6:aff:fe81:1107
+```
+In the same way, if we run `ip a` on the host we can see:
+```bash
+ubuntu@kvm_guest_bionic:~$ ip a
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+    inet 127.0.0.1/8 scope host lo
+       valid_lft forever preferred_lft forever
+    inet 192.168.53.3/32 scope global lo
+       valid_lft forever preferred_lft forever
+    inet6 ::1/128 scope host
+       valid_lft forever preferred_lft forever
+2: ens9: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq state UP group default qlen 1000
+    link/ether 02:06:0a:81:11:06 brd ff:ff:ff:ff:ff:ff
+    inet6 fe80::6:aff:fe81:1106/64 scope link
+       valid_lft forever preferred_lft forever
+2: ens10: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq state UP group default qlen 1000
+    link/ether 02:06:0a:81:11:07 brd ff:ff:ff:ff:ff:ff
+    inet6 fe80::6:aff:fe81:1107/64 scope link
+       valid_lft forever preferred_lft forever
+3: ens9.143@ens9: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default qlen 1000
+    link/ether 02:06:0a:81:11:06 brd ff:ff:ff:ff:ff:ff
+    inet 192.168.203.10/30 scope global ens9.143
+       valid_lft forever preferred_lft forever
+    inet6 fe80::6:aff:fe81:1106/64 scope link
+       valid_lft forever preferred_lft forever
+4: ens10.143@ens10: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default qlen 1000
+    link/ether 02:06:0a:81:11:07 brd ff:ff:ff:ff:ff:ff
+    inet 192.168.200.10/30 scope global ens10.143
+       valid_lft forever preferred_lft forever
+    inet6 fe80::6:aff:fe81:1107/64 scope link
+       valid_lft forever preferred_lft forever
+```
+To configure the cRPD for ECMP:
+```
+## Last changed: 2020-04-23 13:50:06 UTC
+version 20191212.201431_builder.r1074901;
+policy-options {
+    policy-statement export-all {
+        then accept;
+    }
+    policy-statement plb {
+        then {
+            load-balance per-packet;
+        }
+    }
+}
+routing-options {
+    forwarding-table {
+        export plb;
+    }
+    autonomous-system 65000;
+}
+protocols {
+    bgp {
+        group MX480 {
+           family inet {
+                unicast;
+            }
+            export export-all;
+            peer-as 65001;
+            multipath;
+            bfd-liveness-detection {
+                minimum-interval 300;
+                multiplier 3;
+            }
+            neighbor 192.168.203.9;
+            neighbor 192.168.200.9;
+        }
+    }
+}
+```
+
 
 ### creation of a demo-topology
 [TO-DO]
