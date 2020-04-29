@@ -2,20 +2,26 @@
 Code authors: Christian Graf(cgraf@juniper.net) and David de Andres(ddeandres@juniper.net)
 
 ## Disclaimer
-use at own risk
-[TO-DO]
-
+This repository is a best-effor work. This means that it can contain mistakes in the documentation as well as bugs in the scripts provided. Therefore, please use it at your own risk.
 
 # Table of contents
 1. Introduction and Usecase Overview
-2. Useful commands and information
-   - Virtual ethernet pairs
-3. Host Mode
-   - Installing a crpd license
-4. Networking mode
-5. Use case descriptions
-6. Scripts documentation
-7. Known issues
+   - General usecases for cRPD
+   - Why RotH
+   - RoTH deployment options
+   - Covered use cases
+2. Scenarios Overview
+3. Pre-requisites
+   - Installing the license
+4. Use case 1 - RotH - cRPD populates the hosts default RIB
+   - config and setup
+5. Use case 2 - cRPD providing routing-knowedge to another docker-container onl
+   - Use case 2 - demo scenario
+6. Use case 3 - cRPD on KVM and SR-IOV      
+7. Use case 4 - build you own topology instructions   
+8. Scripts and usage
+9. Known issues
+10. Useful comands and information
 
 ## Introduction
 
@@ -28,7 +34,7 @@ cRPD is Juniper routing protocol stack decoupled from JUNOS and packaged for Lin
 + Automation, Telemetry,  Programmability
 + Supports Kubernetes, Docker swarm
 
-## General usecases for cRPD
+### General usecases for cRPD
 - cRPD can be deployed as BGP Route-Reflector/Route-Server
 - cRPD might be used as Routing-Daemon on a Whitebox-switch or some custom hardware to built your own router
 - cRPD might be used for the "Routing on the Host (RotH)" purpose. This is what is covered in this doc.
@@ -52,8 +58,7 @@ Simple BGP solves these problems quite nicely, especially if coupled with BFD. P
 
 RoTH provide better ECMP-redundancy, while lowering complexity on the switches it is attached to.
 
-
-## RoTH deployment options
+### RoTH deployment options
 
 - cRPD populating Hosts routing-table, where finally all VNF's can benefit from
 - cRPD populating a specific docker-containers routing-table
@@ -62,7 +67,7 @@ RoTH provide better ECMP-redundancy, while lowering complexity on the switches i
 - the usecases of cRPD deploying on whitebox-switches is not covered in this doc as well
 
 
-### usecases covered in this guide
+### Covered use cases
 
 The cRPD is agnostic to the linux namespace it is launched.
 When launched in the hosts default namespace, then cRPD populates the hosts routing-table, thus providing routing-knoweldge to the native TCP-/IP stack. As result any applications/hypervisors running on the host (and finally VNF's) can make use the routing-knoweldge shared by cRPD.
@@ -71,12 +76,11 @@ It might be desired, that routing-knowledge shall only made available to specifi
 
 Finally, cRPD can be tight to a KVM-guest. In such case the KVM-guest must be able to launch itself docker-containers to start the cRPD.
 
-
 There is no hard-limit on the cRPD instances which can be launched on the Host.
 Only one cRPD instance shall run in the default namepsace and per each docker containers another instance of cRPD can be launched as well.
 This guide is covering these usecases:
 
-## Overview scenarios
+## Scenarios overview
 
 add pics here
 [TO-DO]
@@ -89,56 +93,26 @@ add pics here
 + Juniper cRPD. Download and import cRPD from the Juniper support downloads page. Currently using version 19.4R1.10.
 + Juniper cRPD license key (required to run BGP here)
 
-
-## Useful comands and information
-
-```bash
-#Junos Commands for cRPD
-> show interface routing # displays the interfaces present in the cRPD’s namespace
-> show bgp summary # presents a summary of the bgp neighbors' status
-> show  route protocol bgp # presents the routes learned trough bgp peers
-
-#Host commands
-docker stats # presents the cpu and memory consumption statistics per container
-docker volume list # lists the current existing docker volumes
-docker volume inspect <volume_name> # provides information about the volume.
-docker load --input crpd.tar #loads a crpd image into docker
-
-#Network Namespace management commands
-ip netns show # lists the existing namespaces
-ip netns exec <namespace> ip addr # lists the interfaces and ip addresses of the provided namespace
-ip netns exec <namespace> <command> # runs any command inside the provided namespace
-ip link set <interface> netns <namespace> # moves the interface into the specified namespace
-#VNF commands
-ip address # shows the interfaces and ip addresses  available in the vnf’s namespace
-ip routes # Shows the ip routes known to this vnf container
-
-```
+## Setting up general stuff 
 [To-Do] Explain loopback interface naming convention for the different platforms
-
-
-
-
-
-# setting up the general stuff 
 [TO-DO] add docker load commands to include the downloaded docker-package
 [TO-DO] creating volumes
-[todo] pre-populating config-files
-[todo] [explain docker exec -ti]
-## Installing the license
+[TO-DO] pre-populating config-files
+[TO-DO] explain docker exec -ti
+[TO-DO] how to pre-populate config-files
+
+### Installing the license
 If this is the first time you run cRPD in this testbed, you need to install the cRPD license key. There are several options, the easiest is to launch the cli via `docker exec -it crpd cli` and then copy-pasting the license code 'request system license add terminal'. Another option is to pre-provision it on the config volume that is provided when running the container. To find the mounting point run `docker volume ls` and then `docker volume inspect <vol_name>`, which will display the path where the volume files are. Last, copy the license file to the `./license` folder.
+[TO-DO] --- be more verbose here on license-install 
 
-[todo] --- be more verbose here on license-install
- - 
-
-## usecase 1 - RotH -cRPD populates the hosts default RIB
+## Use case 1 - RotH - cRPD populates the hosts default RIB
 The cRPD can be used to use the native TCP/Ip stack of the host and polulate the hosts routing-table via any protocol running on the cRPD.
 Technically the cRPD runs into the default-namespace of the Host, hence in the document we name it the "Host-Mode".
 
 In Host-Mode, any interface route from linux kernel gets distributed via netlink to the cRPD instance. There is no need to configure any addresses within cRPD-CLI (except family ISO [TO-DO] check MPLS). Any IPv4/IPv6 addressing is derived from the host's kernel. In other words, all the host's default namespace will be exposed to the cRPD but will not be configured by it.
 
-### usecase 1 - config and setup
-
+### Use case 1 - config and setup
+[TO-DO] This section could be treated as a quickstart
 To run cRPD in host mode:
 ``` bash
 #create volumes
@@ -157,7 +131,7 @@ docker stop crpd01
 [to-do] login docker exec
 
 
-## usecase 2 - cRPD providing routing-knowedge to another docker-container only
+## Use case 2 - cRPD providing routing-knowedge to another docker-container only
 
 
 In this mode it is desired t oprovide any other docker-container a dedicated routing-daemon.
@@ -195,13 +169,17 @@ lo.0             Up    MPLS  enabled
                        ISO   enabled
 
 ```
-To add interfaces to the namespace:
 
-[todo] - all 3 cases below
-case 1 - physical interface like ens8f0
-case 2 - ifl like ens8f0.142
-case 3 - vethi
+Different kind of interfaces can be attached to cRPD and therefore can be moved to the required namespace: 
+- A physical interface (ifd) like ens8f0
+- A logical interface (ifl) like ens8f0.142
+- A virtual ethernet device (veth) 
 
+### Virtual ethernet pairs (veth)
+The veth devices are virtual Ethernet devices. They can act as tunnels between network namespaces to create a bridge to a physical network device in another namespace, but can also be used as standalone network devices.
+Source and further information: [veth - Virtual Ethernet Device](http://man7.org/linux/man-pages/man4/veth.4.html)
+
+So comming back to how to add any interface to the namespace:
 ```
 ip link set <interface> netns <namespace>
 ```
@@ -221,11 +199,9 @@ lo.0             Up    MPLS  enabled
                        INET  192.168.53.14
 ```
 
-## Use case description
+### Usecase 2 - config and setup
 
-### usecase 3 - use cRPD tp provide routiong-knowedge for a KVM-guest
-
-As more complete example, below, a bridge is created where a physical(logical) interface and a veth endpoint are connected. The other endpoint of the veth interface is moved to the VNF's namespace
+As a more complete example, below, a bridge is created where a physical(logical) interface and a veth endpoint are connected. The other endpoint of the veth interface is moved to the VNF's namespace
 ```bash
 #start the containers
 docker run --rm --detach --name alpine -h alpine --privileged --net=none -it alpine:latest
@@ -274,8 +250,7 @@ ip netns exec $pid ip link set ${veth_instance} up
 # configure ip address
 sudo ip netns exec $pid ip addr add $ipadr dev ${veth_instance}
 ```
-
-### cRPD on KVM and SR-IOV 
+### usecase 3 - cRPD on KVM and SR-IOV 
 This use case covers KVM-based Virtual Machines with full-blown OS and its own routing-stack. The strength of this use case resides on their possibility to make use of more performant interfaces such as SR-IOV enabled ones. It is important to remark that for this use case, the cRPD runs on HOST mode as KVM enables a full OS.
 
 The interesting part of this use cases resides in having 2 interfaces as we can use them to demonstrate uplink redundancy (ECMP). Thanks to this, for example, it can be shown that a running ping will not undergo packet loss even if the used link turns down as all the traffic will be inmediately shifted to the other interface.
@@ -443,8 +418,8 @@ protocols {
 ```
 
 
-## usecase 4 - build you own topology instructions
-todo
+### Use case 4 - build you own topology instructions
+[To-Do]
 
 idea - just launching cRPD conatiners.
 bind them via bridges together (vethi)
@@ -452,7 +427,7 @@ give clear insteructions
 
 
 ### creation of a demo-topology
-[TO-DO] - idea is sclaed scripting. low priority now. but overall important
+[TO-DO] - idea is scaled scripting. low priority now. but overall important
 
 ## Scripts and usage
 Scripts for initialization of VNF's with attached cRPD have been created. In addition, cleanup scripts for removing the configuration are also provided
@@ -474,15 +449,31 @@ useage: create_crpd_veths.sh <docker_instance> <interface> <ip>
 ```
 
 ## Known Issues
-
 1. IFL is not detected by cRPD on Networking mode
 2. BFD repports an error 
 
 
-# TODO
-how to pre-populate config-files
+## Useful comands and information
 
+```bash
+#Junos Commands for cRPD
+> show interface routing # displays the interfaces present in the cRPD’s namespace
+> show bgp summary # presents a summary of the bgp neighbors' status
+> show  route protocol bgp # presents the routes learned trough bgp peers
 
-### Virtual ethernet pairs (veth)
-The veth devices are virtual Ethernet devices. They can act as tunnels between network namespaces to create a bridge to a physical network device in another namespace, but can also be used as standalone network devices.
-Source and further information: [veth - Virtual Ethernet Device](http://man7.org/linux/man-pages/man4/veth.4.html)
+#Host commands
+docker stats # presents the cpu and memory consumption statistics per container
+docker volume list # lists the current existing docker volumes
+docker volume inspect <volume_name> # provides information about the volume.
+docker load --input crpd.tar #loads a crpd image into docker
+
+#Network Namespace management commands
+ip netns show # lists the existing namespaces
+ip netns exec <namespace> ip addr # lists the interfaces and ip addresses of the provided namespace
+ip netns exec <namespace> <command> # runs any command inside the provided namespace
+ip link set <interface> netns <namespace> # moves the interface into the specified namespace
+#VNF commands
+ip address # shows the interfaces and ip addresses  available in the vnf’s namespace
+ip routes # Shows the ip routes known to this vnf container
+
+```
