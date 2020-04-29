@@ -62,6 +62,7 @@ ip address # shows the interfaces and ip addresses  available in the vnf’s nam
 ip routes # Shows the ip routes known to this vnf container
 
 ```
+[To-Do] Explain loopback interface naming convention for the different platforms
 
 ### Virtual ethernet pairs (veth)
 The veth devices are virtual Ethernet devices. They can act as tunnels between network namespaces to create a bridge to a physical network device in another namespace, but can also be used as standalone network devices.
@@ -187,7 +188,7 @@ sudo ip netns exec $pid ip addr add $ipadr dev ${veth_instance}
 ### cRPD on KVM and SR-IOV 
 This use case covers KVM-based Virtual Machines with full-blown OS and its own routing-stack. The strength of this use case resides on their possibility to make use of more performant interfaces such as SR-IOV enabled ones. It is important to remark that for this use case, the cRPD runs on HOST mode as KVM enables a full OS.
 
-The interesting part of this use cases resides in having 2 interfaces as we can use them to demonstrate uplink redundancy (ECMP) with non-stop routing. Thanks to this, for example, it can be shown that a running ping will not undergo packet loss even if the used link turns down as all the traffic will be inmediately shifted to the other interface.
+The interesting part of this use cases resides in having 2 interfaces as we can use them to demonstrate uplink redundancy (ECMP). Thanks to this, for example, it can be shown that a running ping will not undergo packet loss even if the used link turns down as all the traffic will be inmediately shifted to the other interface.
 
 For more information about KVM please refer to the [official page](https://www.linux-kvm.org/page/Main_Page).
 
