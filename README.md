@@ -2,11 +2,11 @@
 Code authors: Christian Graf(cgraf@juniper.net) and David de Andres(ddeandres@juniper.net)
 
 ## Disclaimer
-This repository is a best-effor work. This means that it can contain mistakes in the documentation as well as bugs in the scripts provided. Therefore, please use it at your own risk.
+This repository is a best-effort work. This means that it can contain mistakes in the documentation as well as bugs in the scripts provided. Therefore, please use it at your own risk.
 
 # Table of contents
-1. Introduction and Usecase Overview
-   - General usecases for cRPD
+1. Introduction and Use case Overview
+   - General use cases for cRPD
    - Why RotH
    - RoTH deployment options
    - Covered use cases
@@ -34,7 +34,7 @@ cRPD is Juniper routing protocol stack decoupled from JUNOS and packaged for Lin
 + Automation, Telemetry,  Programmability
 + Supports Kubernetes, Docker swarm
 
-### General usecases for cRPD
+### General use cases for cRPD
 - cRPD can be deployed as BGP Route-Reflector/Route-Server
 - cRPD might be used as Routing-Daemon on a Whitebox-switch or some custom hardware to built your own router
 - cRPD might be used for the "Routing on the Host (RotH)" purpose. This is what is covered in this doc.
@@ -43,20 +43,19 @@ cRPD is Juniper routing protocol stack decoupled from JUNOS and packaged for Lin
 
 When looking at the RotH usecase, the interested reader might ask for what good reason the cRPD might be beneficial?
 
-First of all, when the Host acts as router, then there is no need to run VRRP, MC-LAG or Virtual-Chassis to provide link-redundancy towards the attached host. All VRRP, MC-lAG and Virtual-Chassis require a dependency between the invloved switches/routers, which add burden for operations and increase e.g. troubleshooting-complexity with e.g. an insane state for MC-LAG (via ICCP-Protocol). If bad, then both switches running the MC-LAG might be affected, which somewhat nullifies the benefit of multihoming. 
-As option, plain routing on the host does not need any further syncing (e.g. arp-state syncing for MC-lag) between the switches, they just route.
+First of all, when the Host acts as router, then there is no need to run VRRP, MC-LAG or Virtual-Chassis to provide link-redundancy towards the attached host. All VRRP, MC-lAG and Virtual-Chassis require a dependency between the involved switches/routers, which adds a burden for operations and increase e.g. troubleshooting-complexity with e.g. an insane state for MC-LAG (via ICCP-Protocol). In the worst case, then both switches running the MC-LAG might be affected, which somewhat nullifies the benefit of multihoming.
+As an alternative option, plain routing on the host does not need any further syncing (e.g. arp-state syncing for MC-lag) between the switches, they just route.
 
-So a solution would be to enable BGP-routing on the host via cRPD and VRRP, MC-LAG and Virtual-chassis could be removed while the host still has full redundant ECMP-capable uplinks.
+Therefore, a solution would be to enable BGP-routing on the host via cRPD and VRRP, MC-LAG and Virtual-chassis could then be removed while the host would still have full redundant ECMP-capable uplinks.
 
-
-Another aspect is effectively a reverse-perspective VRRP: 
-- to know if their various upstreams are alive.
+Another aspect is effectively a reverse-perspective VRRP:
+- to know if its various upstreams are alive.
 - simply want a default-route, perhaps with load balancing.
 - In some cases, have enough prefix data to provide for actual destination network failure detection
 
 Simple BGP solves these problems quite nicely, especially if coupled with BFD. Providing more prefix-data can be solved by subscribing via policy to receive «important destination»" .
 
-RoTH provide better ECMP-redundancy, while lowering complexity on the switches it is attached to.
+RoTH provides better ECMP-redundancy, while lowering complexity on the switches it is attached to.
 
 ### RoTH deployment options
 
@@ -69,10 +68,11 @@ RoTH provide better ECMP-redundancy, while lowering complexity on the switches i
 
 ### Covered use cases
 
-The cRPD is agnostic to the linux namespace it is launched.
+The cRPD is agnostic to the linux namespace it is launched in. This enables different scenarios depending on the underlying host's configuration,
+
 When launched in the hosts default namespace, then cRPD populates the hosts routing-table, thus providing routing-knoweldge to the native TCP-/IP stack. As result any applications/hypervisors running on the host (and finally VNF's) can make use the routing-knoweldge shared by cRPD.
 
-It might be desired, that routing-knowledge shall only made available to specific docker-containers. In such usecase the cRPD can be launched in the same network-namespace as the target docker-container.
+It might be desired, that routing-knowledge shall only made available to specific docker-containers. In such use case the cRPD can be launched in the same network-namespace as the target docker-container.
 
 Finally, cRPD can be tight to a KVM-guest. In such case the KVM-guest must be able to launch itself docker-containers to start the cRPD.
 
@@ -84,6 +84,7 @@ This guide is covering these usecases:
 
 add pics here
 [TO-DO]
+![alt text](https://gitlab.com/ddeandres/roth-with-crpd/media/topology_diagram.png)
 
 
 ## Pre-requisites
@@ -93,7 +94,7 @@ add pics here
 + Juniper cRPD. Download and import cRPD from the Juniper support downloads page. Currently using version 19.4R1.10.
 + Juniper cRPD license key (required to run BGP here)
 
-## Setting up general stuff 
+## Setting up general stuff
 [To-Do] Explain loopback interface naming convention for the different platforms
 [TO-DO] add docker load commands to include the downloaded docker-package
 [TO-DO] creating volumes
@@ -103,7 +104,7 @@ add pics here
 
 ### Installing the license
 If this is the first time you run cRPD in this testbed, you need to install the cRPD license key. There are several options, the easiest is to launch the cli via `docker exec -it crpd cli` and then copy-pasting the license code 'request system license add terminal'. Another option is to pre-provision it on the config volume that is provided when running the container. To find the mounting point run `docker volume ls` and then `docker volume inspect <vol_name>`, which will display the path where the volume files are. Last, copy the license file to the `./license` folder.
-[TO-DO] --- be more verbose here on license-install 
+[TO-DO] --- be more verbose here on license-install
 
 ## Use case 1 - RotH - cRPD populates the hosts default RIB
 The cRPD can be used to use the native TCP/Ip stack of the host and polulate the hosts routing-table via any protocol running on the cRPD.
@@ -120,15 +121,17 @@ docker volume create <volume_for_config>
 docker volume create <volume_for_varlog>
 #run cRPD in host mode --net=host
 docker run --rm --detach --name <name> -h <hostmode> --privileged --net=host -v <volume_for_config>:/config -v <volume_for_varlog>:/var/log -it crpd:19.4R1.10
-
 ```
+To log into the cRPD cli:
+```bash
+docker exec -it <name> cli
+```
+Where \<name> is the name of the container where you would like to tun a command, cli is the command and -i stands for interactive and -t for tty.
 To stop the cRPD:
 
 ```bash
-docker stop crpd01
+docker stop <name>
 ```
-
-[to-do] login docker exec
 
 
 ## Use case 2 - cRPD providing routing-knowedge to another docker-container only
@@ -144,7 +147,7 @@ If now a routing-daemon shall attached to a docker-container, then there is just
 The cRPD as routing-daemon must run in the same namespace as the target docker-container.
 When launching cRPD, this is achieved by setting the `-net=container<containername>` as seen in below example.
 Finally, the operator need to decide which interfaces shall be exposed towards the given network-namespace.
-Possible solution are from dockers default-networking, virtual-ethernet-pairs (veth) or even physical interfaces like ens8f0 or subunits ens8f0.142. 
+Possible solution are from dockers default-networking, virtual-ethernet-pairs (veth) or even physical interfaces like ens8f0 or subunits ens8f0.142.
 All of them are possible and covered in this guide
 .
 This co-existence of cRPD and the target docker-container running in same namespace, allows the cRPD to manage the RIB and FIB belonging the namespace.
@@ -170,10 +173,10 @@ lo.0             Up    MPLS  enabled
 
 ```
 
-Different kind of interfaces can be attached to cRPD and therefore can be moved to the required namespace: 
+Different kind of interfaces can be attached to cRPD and therefore can be moved to the required namespace:
 - A physical interface (ifd) like ens8f0
 - A logical interface (ifl) like ens8f0.142
-- A virtual ethernet device (veth) 
+- A virtual ethernet device (veth)
 
 ### Virtual ethernet pairs (veth)
 The veth devices are virtual Ethernet devices. They can act as tunnels between network namespaces to create a bridge to a physical network device in another namespace, but can also be used as standalone network devices.
@@ -250,7 +253,7 @@ ip netns exec $pid ip link set ${veth_instance} up
 # configure ip address
 sudo ip netns exec $pid ip addr add $ipadr dev ${veth_instance}
 ```
-### usecase 3 - cRPD on KVM and SR-IOV 
+### usecase 3 - cRPD on KVM and SR-IOV
 This use case covers KVM-based Virtual Machines with full-blown OS and its own routing-stack. The strength of this use case resides on their possibility to make use of more performant interfaces such as SR-IOV enabled ones. It is important to remark that for this use case, the cRPD runs on HOST mode as KVM enables a full OS.
 
 The interesting part of this use cases resides in having 2 interfaces as we can use them to demonstrate uplink redundancy (ECMP). Thanks to this, for example, it can be shown that a running ping will not undergo packet loss even if the used link turns down as all the traffic will be inmediately shifted to the other interface.
@@ -287,7 +290,7 @@ lrwxrwxrwx 1 root root 0 Apr 23 12:14 /sys/class/net/ens8f0/device/virtfn7 ->
 ```
 The above `../0000:85:11.6` is really important and will be used in the next step to add the VF towards the guest. To do this, a convinient virsh xml file is created:
 
-```xml
+```
 <!-------interface1----->
 <interface type='hostdev' managed='yes'>
    <mac address="02:06:0A:81:11:6" />
@@ -449,8 +452,43 @@ useage: create_crpd_veths.sh <docker_instance> <interface> <ip>
 ```
 
 ## Known Issues
-1. IFL is not detected by cRPD on Networking mode
-2. BFD repports an error 
+### IFL is not detected by cRPD in non-default namespace mode
+When a logical interface was moved into the networking namespace where a cRPD instance was present, the cRPD was not able to pick up this interface and display it in its cli.
+Juniper Engineering provided a container with the fix which has been tested in the following way.
+  1. Launch the cRPD with the fix with the `--net=none` option
+  ```bash
+  docker run --rm --detach --name crpd01 --privileged --net=none -v crpd01_config:/config -v crpd01_varlog:/var/log -it crpd:latest
+  ```
+  2. Create a logical interface from a physical interface and move it to the cRPD's namepsace
+  ```bash
+  pid=$(docker inspect crpd01 --format '{{ .State.Pid }}')
+  sudo ln -sf /proc/$pid/ns/net /var/run/netns/$pid
+  sudo ip link add link ens8f0 name ens8f0.142 type vlan id 142
+  sudo ip link set ens8f0.142 netns $pid
+  sudo ip netns exec $pid ip link set ens8f0.142 up
+  sudo ip netns exec $pid ip addr add 192.168.203.6/30 dev ens8f0.142
+
+  ```
+  3. Log into the cRPD
+  ```bash
+  docker exec -it crpd01 cli
+  ```
+  4. Now check the cRPD and verify that the interface is present
+  ```
+  root@crpd01> show interfaces routing
+  Interface        State Addresses
+  ens8f0.142       Up    MPLS  enabled
+                         ISO   enabled
+                         INET6 fe80::92e2:baff:fe86:6194
+                         INET  192.168.203.6
+  lsi              Up    MPLS  enabled
+                         ISO   enabled
+                         INET6 fe80::a86f:e2ff:fe4e:8dac
+  lo.0             Up    MPLS  enabled
+                         ISO   enabled  
+  ```
+### BFD reports an error
+
 
 
 ## Useful comands and information
