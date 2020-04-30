@@ -81,11 +81,9 @@ Only one cRPD instance shall run in the default namepsace and per each docker co
 This guide is covering these usecases:
 
 ## Scenarios overview
-
-add pics here
-[TO-DO]
-![alt text](https://gitlab.com/ddeandres/roth-with-crpd/blob/master/-/media/topology_diagram.png)
-
+[TO-DO] explain better the image
+The below images describes the 3 different use cases which will be covered in this document
+![](media/topology_diagram.png)
 ## Pre-requisites
 + Ubuntu 18.04
 + see: https://www.juniper.net/documentation/en_US/crpd/topics/reference/general/crr-system-requirement-docker.html
