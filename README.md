@@ -84,8 +84,7 @@ This guide is covering these usecases:
 
 add pics here
 [TO-DO]
-![alt text](https://gitlab.com/ddeandres/roth-with-crpd/media/topology_diagram.png)
-
+![alt text](https://gitlab.com/ddeandres/roth-with-crpd/blob/master/-/media/topology_diagram.png)
 
 ## Pre-requisites
 + Ubuntu 18.04
