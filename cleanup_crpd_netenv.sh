@@ -1,26 +1,13 @@
 #!/bin/bash
 
-c_cleanup () {
-    echo "Looking for containers pid"
-    PID=$(docker inspect $DOCKER_INSTANCE --format '{{ .State.Pid }}') # get pid of docker-instance
-    #check if the container still lives
-    if [ -z $PID ];
-        then
-	    echo "no crpd docker container running. Please clean up before stopping the container."
-	    exit 1
-    fi
-    echo "Found PID of docker $DOCKER_INSTANCE: $PID"
-    pid_cleanup
-}
-
-pid_cleanup () {
-    #move the interface back to the
-    ip -n ${PID} link set $INTERFACE netns 1
+name_cleanup () {
+    #move the interface back to the default namespace
+    ip -n $NAME link set $INTERFACE netns 1
     ip link set $INTERFACE down
     # remove the symlink to the dockers container namespace if present
-    if [ -e /var/run/netns/${PID} ];
+    if [ -e /var/run/netns/$NAME ];
         then
-             rm /var/run/netns/${PID}
+             rm /var/run/netns/$NAME
     fi
     echo "cleanup finished"
 }
@@ -35,16 +22,12 @@ fi
 PARAMS=""
 while (( "$#" )); do
   case "$1" in
-    -p|--pid)
-      PID=$2
+    -n|--name)
+      NAME=$2
       shift 2
       ;;
     -i|--interface)
       INTERFACE=$2
-      shift 2
-      ;;
-    -d|--docker)
-      DOCKER_INSTANCE=$2
       shift 2
       ;;
     --) # end argument parsing
@@ -64,14 +47,10 @@ done
 # set positional arguments in their proper place
 eval set -- "$PARAMS"
 
-if [[ -n $PID ]] && [[ -n $INTERFACE ]];
-then
-    pid_cleanup
-elif [[ -n $DOCKER_INSTANCE ]] && [[ -n $INTERFACE ]];
-then
-    c_cleanup
+if [[ -n $NAME ]] && [[ -n $INTERFACE ]]; then
+    name_cleanup
 else
-    echo "useage: $0 -i <interface_name> -p <PID> OR $0 -i <interface_name> -d <docker_instance_name>"
+    echo "useage: $0 -i <interface_name> -n <crpd_container_name>
     echo "Error: bad params combi. Maybe interface is missing" >&2
     exit 1
 fi

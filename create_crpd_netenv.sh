@@ -23,13 +23,12 @@ echo "PID of docker $1: $pid"
 # bring interface up, enable promisc mode
 ip link set $interface promisc on
 ethtool -K $interface gro off
-ip link set $interface up
 
 # link the namespace from the VNF/crpd to the :
 mkdir -p /var/run/netns
 ln -sf /proc/$pid/ns/net /var/run/netns/$NAME
 
 # move the instance to crpd namespace
-ip link set $interface netns $pid
-ip netns exec $pid ip link set $interface up
-ip netns exec $pid ip addr add $ipadr dev $interface
+ip link set $interface netns $NAME
+ip netns exec $NAME ip link set $interface up
+ip netns exec $NAME ip addr add $ipadr dev $interface
