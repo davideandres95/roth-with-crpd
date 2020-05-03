@@ -11,10 +11,9 @@ fi
 cd ~/scripts
 
 print_help () {
-    echo "useage: $0 -i <interface_name> --vnf <vnf_name:tag> -c <crpd:tag> -a <ipadr> [OPTIONAL] -v (override volumes, minimum provide 2) <volume_name>:<mounting_point>"
+    echo "useage: $0 -i <interface_name> -c <crpd:tag> --name <NAME> -a <ipadr> [OPTIONAL] -v (override volumes, minimum provide 2) <volume_name>:<mounting_point>"
 }
 
-#TO-DO: extract below functions to utils.sh
 check_name () {
     FILE_NS=/var/run/netns/$1
     if [ -f "$FILE_NS" ]; then
@@ -53,14 +52,8 @@ while (( "$#" )); do
           exit 1
           ;;
         -v|--override-volumes)
-          VOLUMES+=($2)
+          VOLUMES+=$2
           shift
-          ;;
-        --vnf)
-          VNF="$(cut -d':' -f1 <<< $2)"
-          echo "vnf name: ${VNF_CONTAINER}" #move to main
-          VNF_TAG="$(cut -d':' -f2 <<< $2)"
-          shift 2
           ;;
         -n|--name)
           NAME=$2
@@ -77,6 +70,10 @@ while (( "$#" )); do
           ;;
         -a|--address)
           IPADR=$2
+          shift 2
+          ;;
+        -h|--help)
+          INTERFACE=$2
           shift 2
           ;;
         --) # end argument parsing
@@ -96,7 +93,7 @@ done
 # set positional arguments in their propper place
 eval set -- "$PARAMS"
 
-if [[ -n $NAME ]] && [[ -n $VNF ]] && [[ -n $CRPD ]] && [[ -n $INTERFACE ]] && [[ -n $IPADR ]]; then
+if [[ -n $NAME ]] && [[ -n $CRPD ]] && [[ -n $INTERFACE ]] && [[ -n $IPADR ]]; then
     if [[ ${#VOLUMES[@]} -ge 2 ]]; then
 	      echo "overriding default volumes.."
         for i in ${VOLUMES[@]}; do
@@ -115,13 +112,10 @@ if [[ -n $NAME ]] && [[ -n $VNF ]] && [[ -n $CRPD ]] && [[ -n $INTERFACE ]] && [
             create_vol $i
         done
     fi
-    crpd_name="crpd_${NAME}"
     prepare_vols
-    echo "Starting containers..."
-    docker run --rm --detach --name $NAME -h $NAME --privileged --net=none -it ${VNF}:${VNF_TAG}
-    docker run --rm --detach --name $crpd_name --privileged --net=container:$NAME $vols_string -it $CRPD
-    ./create_crpd_netenv.sh $crpd_name $INTERFACE $IPADR
-    #./setup_crpd_networking.sh $crpd_name $INTERFACE $IPADR
+    echo "Starting container..."
+    docker run --rm --detach --name $NAME -h $NAME --privileged --net=none $vols_string -it $CRPD
+    ./create_crpd_netenv.sh $NAME $INTERFACE $IPADR
     echo "Start procedure finished"
 else
     print_help

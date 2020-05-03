@@ -5,7 +5,7 @@ if [[ $EUID -ne 0 ]];
     then
          echo "This script must be run as root" 1>&2
          exit
-fi   
+fi
 
 print_help () {
     echo "useage: $0 -i <interface_name> --vnf <vnf_name> [OPTIONAL] -v (delete volumes)>"
@@ -41,10 +41,6 @@ while (( "$#" )); do
           INTERFACE=$2
           shift 2
           ;;
-        -h|--help)
-          INTERFACE=$2
-          shift 2
-          ;;
         --) # end argument parsing
           shift
           break
@@ -63,7 +59,7 @@ done
 eval set -- "$PARAMS"
 
 if [[ -n $VNF ]] && [[ -n $INTERFACE ]]; then
-    ./cleanup_crpd_veths.sh -i $INTERFACE -d $CRPD
+    ./cleanup_crpd_netenv.sh -i $INTERFACE -d $CRPD
     echo "Stopping containers..."
     docker stop $VNF
     docker stop $CRPD
