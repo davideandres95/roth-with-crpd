@@ -7,9 +7,6 @@ if [[ $EUID -ne 0 ]];
          exit
 fi
 
-#change to the scripts directory
-cd ~/scripts
-
 print_help () {
     echo "useage: $0 -i <interface_name> --vnf <vnf_name:tag> -c <crpd:tag> -a <ipadr> [OPTIONAL] -v (override volumes, minimum provide 2) <volume_name>:<mounting_point>"
 }

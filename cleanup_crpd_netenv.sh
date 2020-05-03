@@ -50,7 +50,7 @@ eval set -- "$PARAMS"
 if [[ -n $NAME ]] && [[ -n $INTERFACE ]]; then
     name_cleanup
 else
-    echo "useage: $0 -i <interface_name> -n <crpd_container_name>
+    echo "useage: $0 -i <interface_name> -n <crpd_container_name>"
     echo "Error: bad params combi. Maybe interface is missing" >&2
     exit 1
 fi

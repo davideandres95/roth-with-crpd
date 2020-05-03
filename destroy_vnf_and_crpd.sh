@@ -17,8 +17,6 @@ request_confirmation () {
         CONFIRMED=true# do dangerous stuff
     fi
 }
-#change to the scripts directory
-cd ~/scripts
 
 PARAMS=""
 while (( "$#" )); do
