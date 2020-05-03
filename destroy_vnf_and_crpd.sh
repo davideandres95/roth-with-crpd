@@ -57,7 +57,7 @@ done
 eval set -- "$PARAMS"
 
 if [[ -n $VNF ]] && [[ -n $INTERFACE ]]; then
-    ./cleanup_crpd_netenv.sh -i $INTERFACE -d $CRPD
+    ./cleanup_crpd_netenv.sh -i $INTERFACE -n $CRPD
     echo "Stopping containers..."
     docker stop $VNF
     docker stop $CRPD

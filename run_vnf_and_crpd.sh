@@ -118,7 +118,6 @@ if [[ -n $NAME ]] && [[ -n $VNF ]] && [[ -n $CRPD ]] && [[ -n $INTERFACE ]] && [
     docker run --rm --detach --name $NAME -h $NAME --privileged --net=none -it ${VNF}:${VNF_TAG}
     docker run --rm --detach --name $crpd_name --privileged --net=container:$NAME $vols_string -it $CRPD
     ./create_crpd_netenv.sh $crpd_name $INTERFACE $IPADR
-    #./setup_crpd_networking.sh $crpd_name $INTERFACE $IPADR
     echo "Start procedure finished"
 else
     print_help

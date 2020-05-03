@@ -7,9 +7,6 @@ if [[ $EUID -ne 0 ]];
          exit
 fi
 
-#change to the scripts directory
-cd ~/scripts
-
 print_help () {
     echo "useage: $0 -i <interface_name> -c <crpd:tag> --name <NAME> -a <ipadr> [OPTIONAL] -v (override volumes, minimum provide 2) <volume_name>:<mounting_point>"
 }
@@ -104,8 +101,8 @@ if [[ -n $NAME ]] && [[ -n $CRPD ]] && [[ -n $INTERFACE ]] && [[ -n $IPADR ]]; t
         exit 1
     elif [[ ${#VOLUMES[@]} -eq 0 ]]; then
         echo "using default volumes"
-        crpd_config_vol="crpd_${VNF}_config"
-        crpd_var_vol="crpd_${VNF}_varlog"
+        crpd_config_vol="crpd_${NAME}_config"
+        crpd_var_vol="crpd_${NAME}_varlog"
         VOLUMES=(${VOLUMES[@]} "$crpd_config_vol:/config")
         VOLUMES=(${VOLUMES[@]} "$crpd_var_vol:/var/log")
         for i in ${VOLUMES[@]}; do

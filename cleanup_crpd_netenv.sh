@@ -5,9 +5,8 @@ name_cleanup () {
     ip -n $NAME link set $INTERFACE netns 1
     ip link set $INTERFACE down
     # remove the symlink to the dockers container namespace if present
-    if [ -e /var/run/netns/$NAME ];
-        then
-             rm /var/run/netns/$NAME
+    if [[ -e /var/run/netns/$NAME ]]; then
+        sudo rm /var/run/netns/$NAME
     fi
     echo "cleanup finished"
 }
