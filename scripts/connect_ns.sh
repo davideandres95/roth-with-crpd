@@ -22,11 +22,15 @@ while (( "$#" )); do
         -s|--src)
 	  SRC=$2
 	  s_if=${2:(-7)}
+	  s_if=${s_if:=$SRC}
+	  echo "s_if=$s_if"
           shift
           ;;
-        -d|--dst)
+        -d|--dst)
           DST=$2
           d_if=${2:(-7)}
+	  d_if=${d_if:=$DST}
+	  echo "d_if=$d_if"
           shift
           ;;
         -p|--prefix-30)
