@@ -18,11 +18,12 @@ pid=$(docker inspect $NAME --format '{{ .State.Pid }}') # get pid of docker-inst
 echo "PID of docker $1: $pid"
 
 #if IFL does not exist
-if [[ ! -e "/sys/class/net/${interface}"]]; then
+if [[ ! -e "/sys/class/net/${interface}" ]]; then
     IFD="$(cut -d'.' -f1 <<< $interface)"
     IFL="$(cut -d'.' -f2 <<< $interface)"
-    if [[ -e "/sys/class/net/$IFD"]]; then
-        sudo ip link add $IFD name $interface type vlan id $IFL
+    echo "$IFD.$IFL"
+    if [[ -e "/sys/class/net/$IFD" ]]; then
+        sudo ip link add link $IFD name $interface type vlan id $IFL
         echo "The logical interface: $interface has been created"
     else
         echo "The physical interface requested does not exist. Exiting..." 1>&2
@@ -38,6 +39,6 @@ mkdir -p /var/run/netns
 ln -sf /proc/$pid/ns/net /var/run/netns/$NAME
 
 # move the instance to crpd namespace
-ip link set $interface netns $NAME
-ip netns exec $NAME ip link set $interface up
-ip netns exec $NAME ip addr add $ipadr dev $interface
+sudo ip link set $interface netns $NAME
+sudo ip -n $NAME link set $interface up
+sudo ip -n $NAME addr add $ipadr dev $interface

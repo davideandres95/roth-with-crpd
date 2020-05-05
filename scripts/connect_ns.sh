@@ -6,6 +6,10 @@ if [[ $EUID -ne 0 ]];
          echo "This script must be run as root" 1>&2
          exit
 fi
+print_help () {
+	echo "useage: $0 -s <src_ns> -d <dst_ns> -p <prefix30> [OPTIONAL] -h (print help)"
+}
+
 
 
 PARAMS=""
@@ -16,11 +20,17 @@ while (( "$#" )); do
           exit 1
           ;;
         -s|--src)
-          SRC=$2
+	  SRC=$2
+	  s_if=${2:(-7)}
+	  s_if=${s_if:=$SRC}
+	  echo "s_if=$s_if"
           shift
           ;;
-        -d|--dst)
+        -d|--dst)
           DST=$2
+          d_if=${2:(-7)}
+	  d_if=${d_if:=$DST}
+	  echo "d_if=$d_if"
           shift
           ;;
         -p|--prefix-30)
@@ -45,15 +55,16 @@ done
 eval set -- "$PARAMS"
 
 if [[ -n $SRC ]] && [[ -n $DST ]]; then
-  sudo ip link add veth_${SRC}_${DST} type veth peer name veth_${DST}_${SRC}
-  sudo ip link set veth_${DST}_${SRC} netns $SRC
-  sudo ip link set veth_${DST}_${SRC} netns $DST
-  sudo ip -n $SRC set veth_${DST}_${SRC} up
-  sudo ip -n $DST set veth_${SRC}_${DST} up
-  if [[ -n $PREFIX_30 ]]; then
-      sudo ip -n $SRC addr add $PREFIX_30.1 dev veth_${SRC}_${DST}
-      sudo ip -n $DST addr add $PREFIX_30.2 dev veth_${DST}_${SRC}
-  fi
+    #create veth pair with name src-dst
+    sudo ip link add ${s_if}-${d_if} type veth peer name ${d_if}-${s_if}
+    sudo ip link set ${s_if}-${d_if} netns $SRC
+    sudo ip link set ${d_if}-${s_if} netns $DST
+    sudo ip -n $SRC link set ${s_if}-${d_if} up
+    sudo ip -n $DST link set ${d_if}-${s_if} up
+    if [[ -n $PREFIX_30 ]]; then
+        sudo ip -n $SRC addr add $PREFIX_30.1 dev ${s_if}-${d_if}
+        sudo ip -n $DST addr add $PREFIX_30.2 dev ${d_if}-${s_if}
+    fi
 else
     print_help
     exit 1
