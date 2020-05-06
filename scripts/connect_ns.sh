@@ -62,6 +62,7 @@ if [[ -n $SRC ]] && [[ -n $DST ]]; then
     sudo ip -n $SRC link set ${s_if}-${d_if} up
     sudo ip -n $DST link set ${d_if}-${s_if} up
     if [[ -n $PREFIX_30 ]]; then
+        #[TO-DO] fix this hardcoding to proper implement this functionality
         sudo ip -n $SRC addr add $PREFIX_30.1 dev ${s_if}-${d_if}
         sudo ip -n $DST addr add $PREFIX_30.2 dev ${d_if}-${s_if}
     fi
