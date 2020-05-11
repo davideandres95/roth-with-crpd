@@ -11,18 +11,18 @@ This repository is a best-effort work. This means that it can contain mistakes i
    - Covered use cases
 2. Scenarios Overview
 3. Pre-requisites
-   - Installing the license
-4. Use case 1 - RotH - cRPD populates the hosts default RIB
+4. Setting up general stuff
+5. Use case 1 - RotH - cRPD populates the hosts default RIB
    - config and setup
-5. Use case 2 - cRPD providing routing-knowledge to another docker-container
+6. Use case 2 - cRPD providing routing-knowledge to another docker-container
    - config and setup
-6. Use case 3 - cRPD on KVM and SR-IOV
+7. Use case 3 - cRPD on KVM and SR-IOV
    - config and setup
-7. cRPD for testing and Lab infra
+8. cRPD for testing and Lab infra
     - Custom Topologies creation
-8. Scripts and usage
-9. Known issues
-10. Useful commands and information
+9. Scripts and usage
+10. Known issues
+11. Useful commands and information
 
 ## Introduction
 
@@ -44,7 +44,7 @@ Start your [90 days free trial](https://www.juniper.net/us/en/dm/crpd-trial/) to
 
 ### Why RotH
 
-When looking at the RotH usecase, the interested reader might ask for what good reason the cRPD might be beneficial?
+When looking at the RotH use case, the interested reader might ask for what good reason the cRPD might be beneficial?
 
 First of all, when the Host acts as router, then there is no need to run VRRP, MC-LAG or Virtual-Chassis to provide link-redundancy towards the attached host. All VRRP, MC-lAG and Virtual-Chassis require a dependency between the involved switches/routers, which adds a burden for operations and increase e.g. troubleshooting-complexity with e.g. an insane state for MC-LAG (via ICCP-Protocol). In the worst case, then both switches running the MC-LAG might be affected, which somewhat nullifies the benefit of multihoming.
 As an alternative option, plain routing on the host does not need any further syncing (e.g. arp-state syncing for MC-lag) between the switches, they just route.
@@ -66,12 +66,12 @@ RoTH provides better ECMP-redundancy, while lowering complexity on the switches 
 - cRPD populating a specific docker-containers routing-table
 - cRPD populating a KVM-guests routing-table
 - [experimental]cRPD could be used to build a network-topology to develop new configurations, prepare for testing and even run scaling-tests
-- the usecases of cRPD deployed on whitebox-switches is not covered in this doc
+- the use cases of cRPD deployed on whitebox-switches is not covered in this doc
 
 
 ### Covered use cases
 
-The cRPD is agnostic to the linux namespace it is launched in. This enables different scenarios depending on the underlying host's configuration. This guide is covering these usecases:
+The cRPD is agnostic to the linux namespace it is launched in. This enables different scenarios depending on the underlying host's configuration. This guide is covering these use cases:
 
 
 1. When launched in the hosts default namespace, then cRPD populates the hosts routing-table, thus providing routing-knoweldge to the native TCP-/IP stack. As result any applications/hypervisors running on the host (and finally VNF's) can make use the routing-knoweldge shared by cRPD. In addition cRPD can provide ECMP over existing redundant links.
@@ -95,7 +95,7 @@ The below diagram maps with the above mentioned use cases. The configuration par
 + Juniper cRPD license key (required to run BGP here)
 
 ## Setting up general stuff
-[To-Do] Explain loopback interface naming convention for the different platforms
+
 ### Loading the cRPD image
 Once the crpd.tgz file has been downloaded from juniper.net, it must be loaded into docker. To do this:
 ```bash
@@ -112,7 +112,8 @@ To create a volume:
 docker volume create <volume_name>
 ```
 [TO-DO] pre-populating config-files
-
+### Loopback interface across platforms
+[TO-DO] explain the different naming conventions for the loopback address across crpd, host and junos.
 
 ### Installing the license
 If this is the first time you run cRPD in this testbed, you need to install the cRPD license key. There are several options, the easiest is to launch the cli via `docker exec -it crpd cli` and then copy-pasting the license code 'request system license add terminal'. Another option is to pre-provision it on the config volume that is provided when running the container. To find the mounting point run `docker volume ls` and then `docker volume inspect <vol_name>`, which will display the path where the volume files are. Last, copy the license file to the `./license` folder. We must now load it in the cRPD
@@ -145,11 +146,89 @@ To log into the cRPD cli:
 docker exec -it crpd01 cli
 ```
 Where crpd01 is the name of the container where you would like to run a command, cli is the command and -i stands for interactive and -t for tty.
-The configuration for ECMP through BNG and BFD:
+
+The configuration for ECMP with BGP and BFD for the cRPD:
 ```
-TO-DO: add crpd01 config
+root@crpd01> show configuration
+policy-options {
+    policy-statement lo {
+        term loopback {
+            from interface lo.0;
+            then accept;
+        }
+        term last {
+            then reject;
+        }
+    }
+    policy-statement plb {
+        then {
+            load-balance per-packet;
+        }
+    }
+}
+routing-options {
+    forwarding-table {
+        export plb;
+    }
+    router-id 192.168.53.2;
+    autonomous-system 65002;
+}
+protocols {
+    bgp {
+        group to-mx {
+            type external;
+            family inet {
+                unicast;
+            }
+            export lo;
+            peer-as 65001;
+            multipath;
+            bfd-liveness-detection {
+                minimum-interval 300;
+                multiplier 3;
+            }
+            neighbor 192.168.200.5;
+            neighbor 192.168.203.5;
+        }
+    }
+}
 ```
-To stop the cRPD:
+The counterpart configuration on the neighbor(MX):
+```
+policy-options {
+    policy-statement lo {
+        term loopback {
+            from interface lo0.0;
+            then accept;
+        }
+        term last {
+            then reject;
+        }
+    }
+}
+routing-options {
+    autonomous-system 65001;
+}
+protocols {
+    bgp {
+        group to_crpd01 {
+            type external;
+            family inet {
+                unicast;
+            }
+            export lo;
+            peer-as 65002;
+            bfd-liveness-detection {
+                minimum-interval 300;
+                multiplier 3;
+            }
+            neighbor 192.168.200.6;
+            neighbor 192.168.203.6;
+        }
+    }
+}
+```
+Finally, to stop the cRPD:
 
 ```bash
 docker stop <name>
@@ -218,7 +297,7 @@ lo.0             Up    MPLS  enabled
                        INET  192.168.53.14
 ```
 
-### Usecase 2 - config and setup
+### Use case 2 - config and setup
 
 As a more complete example, below, a logical interface is moved to the cRPD-VNF shared namespace.
 ```bash
@@ -253,13 +332,14 @@ sudo ip -n $ns_name link set ${interface} up
 sudo ip -n $ns_name addr add $ipadr dev ${interface}
 ```
 
-### Usecase 3 - cRPD on KVM and SR-IOV
+## Use case 3 - cRPD on KVM and SR-IOV
 This use case covers KVM-based Virtual Machines with full-blown OS and its own routing-stack. The strength of this use case resides on their possibility to make use of more performant interfaces such as SR-IOV enabled ones. It is important to remark that for this use case, the cRPD runs on HOST mode as KVM enables a full OS.
 
 The interesting part of this use cases resides in having 2 interfaces as we can use them to demonstrate uplink redundancy (ECMP). Thanks to this, for example, it can be shown that a running ping will not undergo packet loss even if the used link turns down as all the traffic will be inmediately shifted to the other interface.
 
 We will now explain the setup presented in the [scenarios overview](#scenarios) section. In the host a KVM, ubuntu bionic in our case, has been deployed using virsh.For more information about KVM please refer to the [official page](https://www.linux-kvm.org/page/Main_Page). After, we have enabled VFs on an interface which allows it. To continue, we have onboarded two VFs as networking interfaces into the KVM using a xml templates. Now, we have deployed the cRPD in host mode (docker must be installed) and verified that the new interfaces are visible. Provided that the ECMP is correct, our KVM machine is empowered with uplink redun (ECMP) towards another router that we have configured acordingly in the lab.
 
+### Use case 3 - config and setup
 To launch a KVM guest:
 ```bash
 virt-install --connect qemu:///system --virt-type kvm --name $name --ram $memory  --vcpus=$core --os-type linux --os-variant ubuntu16.04 --disk path=$image,format=qcow2 --disk cidata.iso,device=cdrom --
@@ -428,9 +508,10 @@ Customer needs a quick test for a 1000-node ISIS GRID. We just might script it
 
 #### Custom Topologies creation
 Anyone can script the creation of their custom topology, for example for a simple twin-crpd topology as show in the below diagram:
-[To-Do] Explain that cRPD here is running on its own isolated namespace
 
 ![twin_crpds diagram](media/twin_crpds.png)
+
+Please note, that in this case, we are runnning the cRPD in it's own networking namespace. This is different from use case 2 where we launched the crpd container in the networking namespace of another container.
 
 ```bash
 #spin up crpds
