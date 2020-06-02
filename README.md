@@ -23,6 +23,7 @@ This repository is a best-effort work. This means that it can contain mistakes i
 9. Scripts and usage
 10. Known issues
 11. Useful commands and information
+12. PCI-address mapping and CPU-Pinning
 
 ## Introduction
 
@@ -634,3 +635,127 @@ ip address # shows the interfaces and ip addresses  available in the vnf’s nam
 ip routes # Shows the ip routes known to this vnf container
 
 ```
+
+# CPU-Pinning
+
+By default a docker-container can use any cores available in the system. If the host is a multi-CPU system, then any given PCI-device belongs to a specific CPU only. 
+In a high-performance system, the following makes sense:
+- disallow (reserve/isolate) cores to be used by the linux-scheduler
+- ensure that packets never traverse sockets in multi-cpu system. This means if a NIC belongs to Node 0 in a multi-cpu system, then cRPD should ideally only use cores from the same Node 0
+
+
+Note: Pinning uses the CPU's which are excluded from the linux-scheduler. So excluding CPU's via "isolcpus" is only stopping the linux-scheduler to use it, but any virsh/docker can still use those CPU's
+ 
+
+
+## Preparing GRUB
+
+## find out nic to socket mapping
+
+For example ens4f0 belongs to core 14-27 (numa node 1). Use the `cat /sys/bus/pci/devices/<pci-address>/local_cpulist` command to identtify to which socket the pic-address belongs.
+
+```
+lab@ubuntu2:~$ lspci | grep 10-G
+81:00.0 Ethernet controller: Intel Corporation 82599ES 10-Gigabit SFI/SFP+ Network Connection (rev 01)
+..
+
+reverse task - providing pci-address and enlisting kernel-name
+
+lab@ubuntu2:~$ cd /sys/bus/pci/devices
+lab@ubuntu2:/sys/bus/pci/devices$ ls 0000\:81\:00.0/net/
+ens4f0
+
+lab@ubuntu2:/sys/bus/pci/devices$ ethtool -i ens4f0 | grep bus
+bus-info: 0000:81:00.0
+
+lab@ubuntu2:/sys/bus/pci/devices$ numactl -H
+available: 2 nodes (0-1)
+node 0 cpus: 0 1 2 3 4 5 6 7 8 9 10 11 12 13
+node 0 size: 128879 MB
+node 0 free: 85719 MB
+node 1 cpus: 14 15 16 17 18 19 20 21 22 23 24 25 26 27
+node 1 size: 129021 MB
+node 1 free: 86570 MB
+node distances:
+node   0   1
+  0:  10  21
+  1:  21  10
+  
+  and HERE THE MOST IMPORTANT COMMAND (cat local_cpulist) to find out NIC<>SOCKET mapping
+  ----------------------------------------------------------------------
+lab@ubuntu2:/sys/bus/pci/devices$ cd /sys/bus/pci/devices/0000:81:00.0
+lab@ubuntu2:/sys/bus/pci/devices/0000:81:00.0$ cat local_cpulist
+14-27
+
+```
+
+### /etc/default/grub
+
+Lets assume the below *isolcpus=20-27* config in grub and below activation:
+
+```
+/etc/default/grub
+...
+GRUB_CMDLINE_LINUX_DEFAULT="intel_iommu=on"
+GRUB_CMDLINE_LINUX="isolcpus=20-27 default_hugepagesz=1G hugepagesz=1G hugepages=80"
+```
+
+### activating changes in grub
+
+```
+lab@ubuntu2:~/vmx$ sudo vi /etc/default/grub
+lab@ubuntu2:~/vmx$ sudo update-grub
+[sudo] password for lab:
+Generating grub configuration file ...
+...
+done
+
+lab@ubuntu2:~/vmx$ sudo grub-install /dev/sda
+Installing for x86_64-efi platform.
+Installation finished. No error reported.
+lab@ubuntu2:~/vmx$ sudo reboot
+```
+
+## Verify isolcpus
+
+If the grub-parm isolcpus is active or not can be verified (after grub-update and grub-install /dev/sda and a following reboot) here:
+
+### /sys isolated
+
+```
+lab@ubuntu2:~$ cat /sys/devices/system/cpu/isolated
+20-27
+lab@ubuntu2:~$ cat /sys/devices/system/cpu/possible
+0-27
+```
+
+### dmesg
+
+Futher more it might be a good idea to check of the isol-cpu was provided correctly during boot:
+
+```
+lab@ubuntu2:~$ cat /proc/cmdline
+BOOT_IMAGE=/boot/vmlinuz-4.15.0-43-generic root=UUID=2a3f3270-84d8-434e-af28-21ea91474ff7 ro isolcpus=20-27 default_hugepagesz=1G hugepagesz=1G hugepages=80 intel_iommu=on
+```
+
+### taskset
+Just check which cpu-cores the running process is allowed to use. Core 20-27 shall not be enlisted.
+
+```
+lab@ubuntu2:~$ taskset -cp 1
+pid 1's current affinity list: 0-19
+
+lab@ubuntu2:~$ cat /proc/$$/status|tail -6
+Cpus_allowed:   00fffff
+Cpus_allowed_list:      0-19   <<<< core 20-27 not allowed, as configured via isolcpu
+Mems_allowed:   00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000003
+Mems_allowed_list:      0-1
+voluntary_ctxt_switches:        65
+nonvoluntary_ctxt_switches:     0
+```
+
+## enforce dedicated cores to be used by cRPD
+
+By Allowing only cores 20-27 towards cRPD, we ensure that only cores are sued which belong to the desired interface ens4f0
+
+lab@ubuntu-cg:~$ docker run --rm --detach --name crpd_01 -h crpd_01 --privileged --cpuset-cpus 20-27 --net=host -v crpd01_config:/config -v crpd01_varlog:/var/log -it crpd:20.1R1.11 
