@@ -5,13 +5,18 @@ if [[ $EUID -ne 0 ]];
     then
          echo "This script must be run as root" 1>&2
          exit
-fi   
-
-#change to the scripts directory
-cd ~/scripts
+fi
 
 print_help () {
-    echo "useage: $0 -i <interface_name> --vnf <vnf_name:tag> -c <crpd:tag> -a <ipadr> [OPTIONAL] -v (override volumes, minimum provide 2) <volume_name>:<mounting_point>"
+    echo "useage: $0 -i <interface_name> -c <crpd:tag> --name <NAME> -a <ipadr> [OPTIONAL] -v (override volumes, minimum provide 2) <volume_name>:<mounting_point>"
+}
+
+check_name () {
+    FILE_NS=/var/run/netns/$1
+    if [ -f "$FILE_NS" ]; then
+        echo "The namespace: $FILE_NS exists. Please choose a unique name"  1>&2
+        exit
+    fi
 }
 
 create_vol () {
@@ -44,14 +49,13 @@ while (( "$#" )); do
           exit 1
           ;;
         -v|--override-volumes)
-          VOLUMES+=($2)
+          VOLUMES+=$2
           shift
           ;;
-        --vnf)
-          VNF="$(cut -d':' -f1 <<< $2)"
-          echo "vnf name: ${VNF_CONTAINER}" #move to main
-          VNF_TAG="$(cut -d':' -f2 <<< $2)"
-          shift 2
+        -n|--name)
+          NAME=$2
+          check_name $NAME
+          shift
           ;;
         -c|--crpd)
           CRPD=$2
@@ -86,9 +90,9 @@ done
 # set positional arguments in their propper place
 eval set -- "$PARAMS"
 
-if [[ -n $VNF ]] && [[ -n $CRPD ]] && [[ -n $INTERFACE ]] && [[ -n $IPADR ]]; then
+if [[ -n $NAME ]] && [[ -n $CRPD ]] && [[ -n $INTERFACE ]] && [[ -n $IPADR ]]; then
     if [[ ${#VOLUMES[@]} -ge 2 ]]; then
-	echo "overriding default volumes.."
+	      echo "overriding default volumes.."
         for i in ${VOLUMES[@]}; do
             create_vol "$(cut -d':' -f1 <<< $i)"
         done
@@ -97,24 +101,20 @@ if [[ -n $VNF ]] && [[ -n $CRPD ]] && [[ -n $INTERFACE ]] && [[ -n $IPADR ]]; th
         exit 1
     elif [[ ${#VOLUMES[@]} -eq 0 ]]; then
         echo "using default volumes"
-        crpd_config_vol="crpd_${VNF}_config"
-        crpd_var_vol="crpd_${VNF}_varlog"
+        crpd_config_vol="crpd_${NAME}_config"
+        crpd_var_vol="crpd_${NAME}_varlog"
         VOLUMES=(${VOLUMES[@]} "$crpd_config_vol:/config")
         VOLUMES=(${VOLUMES[@]} "$crpd_var_vol:/var/log")
         for i in ${VOLUMES[@]}; do
             create_vol $i
         done
     fi
-    crpd_name="crpd_${VNF}"
     prepare_vols
-    echo "Starting containers..."
-    docker run --rm --detach --name $VNF -h $VNF --privileged --net=none -it ${VNF}:${VNF_TAG}
-    docker run --rm --detach --name $crpd_name --privileged --net=container:$VNF $vols_string -it $CRPD
-    ./create_crpd_veths.sh $crpd_name $INTERFACE $IPADR
-    #./setup_crpd_networking.sh $crpd_name $INTERFACE $IPADR
+    echo "Starting container..."
+    docker run --rm --detach --name $NAME -h $NAME --privileged --net=none $vols_string -it $CRPD
+    ./create_crpd_netenv.sh $NAME $INTERFACE $IPADR
     echo "Start procedure finished"
 else
     print_help
     exit 1
 fi
-
