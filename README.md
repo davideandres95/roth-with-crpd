@@ -472,12 +472,15 @@ Juniper Engineering provided a container with the fix which has been tested in t
   ```
   2. Create a logical interface from a physical interface and move it to the cRPD's namepsace
   ```bash
+  sudo mkdir /var/run/netns
   pid=$(docker inspect crpd01 --format '{{ .State.Pid }}')
-  sudo ln -sf /proc/$pid/ns/net /var/run/netns/$pid
-  sudo ip link add link ens8f0 name ens8f0.142 type vlan id 142
-  sudo ip link set ens8f0.142 netns $pid
-  sudo ip netns exec $pid ip link set ens8f0.142 up
-  sudo ip netns exec $pid ip addr add 192.168.203.6/30 dev ens8f0.142
+  vid=4000
+
+  [ -d /var/run/netns ] || sudo ln -sf /proc/$pid/ns/net /var/run/netns/$pid
+  sudo ip link add link ens8f0 name ens8f0.$vid type vlan id $vid
+  sudo ip link set ens8f0.$vid netns $pid
+  sudo ip netns exec $pid ip link set ens8f0.$vid up
+  sudo ip netns exec $pid ip addr add 192.168.203.1/30 dev ens8f0.$vid
 
   ```
   3. Log into the cRPD
