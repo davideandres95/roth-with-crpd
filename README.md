@@ -3,6 +3,8 @@ Code authors: Christian Graf(cgraf@juniper.net) and David de Andres(ddeandres@ju
 
 ## Disclaimer
 This repository is a best-effort work. This means that it can contain mistakes in the documentation as well as bugs in the scripts provided. Therefore, please use it at your own risk.
+Feedback and questions welcome.
+
 # Table of contents
 1. Introduction and Use case Overview
    - General use cases for cRPD
