@@ -22,11 +22,12 @@ Feedback and questions welcome.
    - config and setup
 8. cRPD for testing and Lab infra
     - Custom Topologies creation
-9. Scripts and usage
-10. Known issues
-11. Useful commands and information
-12. PCI-address mapping and CPU-Pinning
+9. PCI-address mapping and CPU-Pinning
+10. Kernel VRFs with cRPD
 
+Appendix A. Scripts and usage
+Appendix B. Known issues
+Appendix C. Useful commands and information
 ## Introduction
 
 cRPD is Juniper routing protocol stack decoupled from JUNOS and packaged for Linux container environments.
@@ -537,6 +538,193 @@ sudo ip –n <namespace> <command>
 
 Following this procedure more complex topologies can be created.
 
+## CPU-Pinning
+
+By default a docker-container can use any cores available in the system. If the host is a multi-CPU system, then any given PCI-device belongs to a specific CPU only.
+In a high-performance system, the following makes sense:
+- disallow (reserve/isolate) cores to be used by the linux-scheduler
+- ensure that packets never traverse sockets in multi-cpu system. This means if a NIC belongs to Node 0 in a multi-cpu system, then cRPD should ideally only use cores from the same Node 0
+
+
+Note: Pinning uses the CPU's which are excluded from the linux-scheduler. So excluding CPU's via "isolcpus" is only stopping the linux-scheduler to use it, but any virsh/docker can still use those CPU's
+
+
+
+### Preparing GRUB
+
+#### Find out nic to socket mapping
+
+For example ens4f0 belongs to core 14-27 (numa node 1). Use the `cat /sys/bus/pci/devices/<pci-address>/local_cpulist` command to identtify to which socket the pic-address belongs.
+
+```bash
+lab@ubuntu2:~$ lspci | grep 10-G
+81:00.0 Ethernet controller: Intel Corporation 82599ES 10-Gigabit SFI/SFP+ Network Connection (rev 01)
+..
+
+reverse task - providing pci-address and enlisting kernel-name
+
+lab@ubuntu2:~$ cd /sys/bus/pci/devices
+lab@ubuntu2:/sys/bus/pci/devices$ ls 0000\:81\:00.0/net/
+ens4f0
+
+lab@ubuntu2:/sys/bus/pci/devices$ ethtool -i ens4f0 | grep bus
+bus-info: 0000:81:00.0
+
+lab@ubuntu2:/sys/bus/pci/devices$ numactl -H
+available: 2 nodes (0-1)
+node 0 cpus: 0 1 2 3 4 5 6 7 8 9 10 11 12 13
+node 0 size: 128879 MB
+node 0 free: 85719 MB
+node 1 cpus: 14 15 16 17 18 19 20 21 22 23 24 25 26 27
+node 1 size: 129021 MB
+node 1 free: 86570 MB
+node distances:
+node   0   1
+  0:  10  21
+  1:  21  10
+
+  and HERE THE MOST IMPORTANT COMMAND (cat local_cpulist) to find out NIC<>SOCKET mapping
+  ----------------------------------------------------------------------
+lab@ubuntu2:/sys/bus/pci/devices$ cd /sys/bus/pci/devices/0000:81:00.0
+lab@ubuntu2:/sys/bus/pci/devices/0000:81:00.0$ cat local_cpulist
+14-27
+
+```
+
+#### /etc/default/grub
+
+Lets assume the below *isolcpus=20-27* config in grub and below activation:
+
+```bash
+/etc/default/grub
+...
+GRUB_CMDLINE_LINUX_DEFAULT="intel_iommu=on"
+GRUB_CMDLINE_LINUX="isolcpus=20-27 default_hugepagesz=1G hugepagesz=1G hugepages=80"
+```
+
+#### Activating changes in grub
+
+```bash
+lab@ubuntu2:~/vmx$ sudo vi /etc/default/grub
+lab@ubuntu2:~/vmx$ sudo update-grub
+[sudo] password for lab:
+Generating grub configuration file ...
+...
+done
+
+lab@ubuntu2:~/vmx$ sudo grub-install /dev/sda
+Installing for x86_64-efi platform.
+Installation finished. No error reported.
+lab@ubuntu2:~/vmx$ sudo reboot
+```
+
+### Verify isolcpus
+
+If the grub-parm isolcpus is active or not can be verified (after grub-update and grub-install /dev/sda and a following reboot) here:
+
+#### /sys isolated
+
+```bash
+lab@ubuntu2:~$ cat /sys/devices/system/cpu/isolated
+20-27
+lab@ubuntu2:~$ cat /sys/devices/system/cpu/possible
+0-27
+```
+
+#### dmesg
+
+Futher more it might be a good idea to check of the isol-cpu was provided correctly during boot:
+
+```bash
+lab@ubuntu2:~$ cat /proc/cmdline
+BOOT_IMAGE=/boot/vmlinuz-4.15.0-43-generic root=UUID=2a3f3270-84d8-434e-af28-21ea91474ff7 ro isolcpus=20-27 default_hugepagesz=1G hugepagesz=1G hugepages=80 intel_iommu=on
+```
+
+#### taskset
+Just check which cpu-cores the running process is allowed to use. Core 20-27 shall not be enlisted.
+
+```bash
+lab@ubuntu2:~$ taskset -cp 1
+pid 1s current affinity list: 0-19
+
+lab@ubuntu2:~$ cat /proc/$$/status|tail -6
+Cpus_allowed:   00fffff
+Cpus_allowed_list:      0-19   <<<< core 20-27 not allowed, as configured via isolcpu
+Mems_allowed:   00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000003
+Mems_allowed_list:      0-1
+voluntary_ctxt_switches:        65
+nonvoluntary_ctxt_switches:     0
+```
+
+### Enforce dedicated cores to be used by cRPD
+
+By Allowing only cores 20-27 towards cRPD, we ensure that only cores are sued which belong to the desired interface ens4f0
+
+lab@ubuntu-cg:~$ docker run --rm --detach --name crpd_01 -h crpd_01 --privileged --cpuset-cpus 20-27 --net=host -v crpd01_config:/config -v crpd01_varlog:/var/log -it crpd:20.1R1.11
+
+## Kernel VRF with cRPD
+VRF provides traffic isolation at layer 3 for routing, similar to how you use a VLAN to isolate traffic at layer 2. Think multiple routing tables, giving  flexibility in deploying networks.
+
+cRPD can automatically handle the creation and management of the kernel VRF construct without the need of configuring it on the host. To do so, a routing-instance, named *kvrf1*, with instance-type vrf must be created which demands a route-distinguisher and a vrf-target configurations as well. The interface to be added to the vrf must be created upfront on the host.
+
+### cRPD Configuration
+An example complete configuration can be found below. Please note that for demo purposes, we have added ospf route exchange to get some routes populated into the tables.
+```
+routing-instances{
+    kvrf1 {
+        protocols {
+            ospf {
+                area 0.0.0.0 {
+                    interface all;
+                }
+            }
+        }
+        interface ens8f1.2; ## 'ens8f1.2' is not defined
+        instance-type vrf;
+        route-distinguisher 192.168.80.1:1;
+        vrf-target target:65000:1;
+    }
+}    
+```
+  **Known issue:** cRPD reports that the interface is not defined although it is present when running 'show interfaces routing' because is not present in the interfaces confiration section.
+
+The result on the host of this configuration is the creation of vrfs, tables as well as enslaving the interfaces to the vrfs. It can be verified in the following way.
+### Verification
+List the vrfs:
+```bash
+lab@ubuntu-cg ~> ip link show type vrf
+88: __crpd-vrf1: <MASTER,UP,LOWER_UP> mtu 65536 qdisc noqueue state UP mode DEFAULT group default qlen 1000
+    link/ether fa:ca:51:01:9a:2c brd ff:ff:ff:ff:ff:ff
+    alias kvrf1
+```
+Show the interfaces within the vrf:
+```bash
+lab@ubuntu-cg ~> ip addr show vrf __crpd-vrf1
+83: ens8f1.2@ens8f1: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue master __crpd-vrf1 state UP group default qlen 1000
+    link/ether 90:e2:ba:86:61:95 brd ff:ff:ff:ff:ff:ff
+    inet 192.168.80.1/30 scope global ens8f1.2
+       valid_lft forever preferred_lft forever
+    inet6 fe80::92e2:baff:fe86:6195/64 scope link
+       valid_lft forever preferred_lft forever
+```
+To know what's the table id that crpd has used for the vrf instance we can execute on the crpd the below comand, where the kernel-id: 1 is our host's table index
+```
+root@crpd01> show krt table | grep kvrf
+kvrf1.inet.0                  : GF: 1 krt-index: 4     ID: 0 kernel-id: 1
+kvrf1.iso.0                   : GF: 2 krt-index: 4     ID: 0 kernel-id: 1
+kvrf1.inet6.0                 : GF: 6 krt-index: 4     ID: 0 kernel-id: 1
+```
+Hence, to show the content of the table :
+```bash
+lab@ubuntu-cg ~> ip route list table 1
+broadcast 192.168.80.0 dev ens8f1.2 proto kernel scope link src 192.168.80.1
+192.168.80.0/30 dev ens8f1.2 proto kernel scope link src 192.168.80.1
+local 192.168.80.1 dev ens8f1.2 proto kernel scope host src 192.168.80.1
+broadcast 192.168.80.3 dev ens8f1.2 proto kernel scope link src 192.168.80.1
+192.168.240.1 via 192.168.80.2 dev ens8f1.2 proto 22
+```
+In the above output it can be verified that the last route, 192.168.240.1 was learned through OSPF (proto 22).
+
 ## Scripts and usage
 Scripts for initialization of VNF's with attached cRPD as well as single interface isolated cRPDs have been created. In addition, cleanup scripts for removing the configuration are also provided
 
@@ -573,6 +761,8 @@ useage: connect_ns.sh -s <src_ns> -d <dst_ns> -p <prefix30> [OPTIONAL] -h (print
 ```
 
 ## Known Issues
+### Interface marked as not defined in routing instance
+cRPD reports that the interface is not defined although it is present when running 'show interfaces routing' because is not present in the interfaces confiration section.
 ### IFL is not detected by cRPD in non-default namespace mode
 When a logical interface was moved into the networking namespace where a cRPD instance was present, the cRPD was not able to pick up this interface and display it in its cli.
 Juniper Engineering provided a container with the fix which has been tested in the following way.
@@ -637,127 +827,3 @@ ip address # shows the interfaces and ip addresses  available in the vnf’s nam
 ip routes # Shows the ip routes known to this vnf container
 
 ```
-
-# CPU-Pinning
-
-By default a docker-container can use any cores available in the system. If the host is a multi-CPU system, then any given PCI-device belongs to a specific CPU only. 
-In a high-performance system, the following makes sense:
-- disallow (reserve/isolate) cores to be used by the linux-scheduler
-- ensure that packets never traverse sockets in multi-cpu system. This means if a NIC belongs to Node 0 in a multi-cpu system, then cRPD should ideally only use cores from the same Node 0
-
-
-Note: Pinning uses the CPU's which are excluded from the linux-scheduler. So excluding CPU's via "isolcpus" is only stopping the linux-scheduler to use it, but any virsh/docker can still use those CPU's
- 
-
-
-## Preparing GRUB
-
-## find out nic to socket mapping
-
-For example ens4f0 belongs to core 14-27 (numa node 1). Use the `cat /sys/bus/pci/devices/<pci-address>/local_cpulist` command to identtify to which socket the pic-address belongs.
-
-```
-lab@ubuntu2:~$ lspci | grep 10-G
-81:00.0 Ethernet controller: Intel Corporation 82599ES 10-Gigabit SFI/SFP+ Network Connection (rev 01)
-..
-
-reverse task - providing pci-address and enlisting kernel-name
-
-lab@ubuntu2:~$ cd /sys/bus/pci/devices
-lab@ubuntu2:/sys/bus/pci/devices$ ls 0000\:81\:00.0/net/
-ens4f0
-
-lab@ubuntu2:/sys/bus/pci/devices$ ethtool -i ens4f0 | grep bus
-bus-info: 0000:81:00.0
-
-lab@ubuntu2:/sys/bus/pci/devices$ numactl -H
-available: 2 nodes (0-1)
-node 0 cpus: 0 1 2 3 4 5 6 7 8 9 10 11 12 13
-node 0 size: 128879 MB
-node 0 free: 85719 MB
-node 1 cpus: 14 15 16 17 18 19 20 21 22 23 24 25 26 27
-node 1 size: 129021 MB
-node 1 free: 86570 MB
-node distances:
-node   0   1
-  0:  10  21
-  1:  21  10
-  
-  and HERE THE MOST IMPORTANT COMMAND (cat local_cpulist) to find out NIC<>SOCKET mapping
-  ----------------------------------------------------------------------
-lab@ubuntu2:/sys/bus/pci/devices$ cd /sys/bus/pci/devices/0000:81:00.0
-lab@ubuntu2:/sys/bus/pci/devices/0000:81:00.0$ cat local_cpulist
-14-27
-
-```
-
-### /etc/default/grub
-
-Lets assume the below *isolcpus=20-27* config in grub and below activation:
-
-```
-/etc/default/grub
-...
-GRUB_CMDLINE_LINUX_DEFAULT="intel_iommu=on"
-GRUB_CMDLINE_LINUX="isolcpus=20-27 default_hugepagesz=1G hugepagesz=1G hugepages=80"
-```
-
-### activating changes in grub
-
-```
-lab@ubuntu2:~/vmx$ sudo vi /etc/default/grub
-lab@ubuntu2:~/vmx$ sudo update-grub
-[sudo] password for lab:
-Generating grub configuration file ...
-...
-done
-
-lab@ubuntu2:~/vmx$ sudo grub-install /dev/sda
-Installing for x86_64-efi platform.
-Installation finished. No error reported.
-lab@ubuntu2:~/vmx$ sudo reboot
-```
-
-## Verify isolcpus
-
-If the grub-parm isolcpus is active or not can be verified (after grub-update and grub-install /dev/sda and a following reboot) here:
-
-### /sys isolated
-
-```
-lab@ubuntu2:~$ cat /sys/devices/system/cpu/isolated
-20-27
-lab@ubuntu2:~$ cat /sys/devices/system/cpu/possible
-0-27
-```
-
-### dmesg
-
-Futher more it might be a good idea to check of the isol-cpu was provided correctly during boot:
-
-```
-lab@ubuntu2:~$ cat /proc/cmdline
-BOOT_IMAGE=/boot/vmlinuz-4.15.0-43-generic root=UUID=2a3f3270-84d8-434e-af28-21ea91474ff7 ro isolcpus=20-27 default_hugepagesz=1G hugepagesz=1G hugepages=80 intel_iommu=on
-```
-
-### taskset
-Just check which cpu-cores the running process is allowed to use. Core 20-27 shall not be enlisted.
-
-```
-lab@ubuntu2:~$ taskset -cp 1
-pid 1's current affinity list: 0-19
-
-lab@ubuntu2:~$ cat /proc/$$/status|tail -6
-Cpus_allowed:   00fffff
-Cpus_allowed_list:      0-19   <<<< core 20-27 not allowed, as configured via isolcpu
-Mems_allowed:   00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000003
-Mems_allowed_list:      0-1
-voluntary_ctxt_switches:        65
-nonvoluntary_ctxt_switches:     0
-```
-
-## enforce dedicated cores to be used by cRPD
-
-By Allowing only cores 20-27 towards cRPD, we ensure that only cores are sued which belong to the desired interface ens4f0
-
-lab@ubuntu-cg:~$ docker run --rm --detach --name crpd_01 -h crpd_01 --privileged --cpuset-cpus 20-27 --net=host -v crpd01_config:/config -v crpd01_varlog:/var/log -it crpd:20.1R1.11 
