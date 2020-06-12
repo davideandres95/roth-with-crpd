@@ -663,30 +663,73 @@ By Allowing only cores 20-27 towards cRPD, we ensure that only cores are sued wh
 lab@ubuntu-cg:~$ docker run --rm --detach --name crpd_01 -h crpd_01 --privileged --cpuset-cpus 20-27 --net=host -v crpd01_config:/config -v crpd01_varlog:/var/log -it crpd:20.1R1.11
 
 ## Kernel VRF with cRPD
-VRF provides traffic isolation at layer 3 for routing, similar to how you use a VLAN to isolate traffic at layer 2. Think multiple routing tables, giving  flexibility in deploying networks.
+With a kernel-VRF, cRPD is able to provide the functionality of a MPLS L3VPN. The routing-instance type must be `vrf`.
 
-cRPD can automatically handle the creation and management of the kernel VRF construct without the need of configuring it on the host. To do so, a routing-instance, named *kvrf1*, with instance-type vrf must be created which demands a route-distinguisher and a vrf-target configurations as well. The interface to be added to the vrf must be created upfront on the host.
+Sending and Receiving of inet.vpn unicast or inet6.vpn unicast NLRI and pushing the required MPLS label-stack is supported with cRPD.
+Any routing-instance type vrf configured on the cRPD results is a vrf-table beeing created on the host automatically.
+
+As any L3VPN config on Junos, RD, vrf-target or respective vrf-import/export policies need to be configured.
+The interface to be added to the vrf must be created upfront on the host.
+Assigning an ip to the auto-created loopback `__crpd-vrf<x>` for given VRF was not functional in the lab and needs further investigation.
 
 ### cRPD Configuration
 An example complete configuration can be found below. Please note that for demo purposes, we have added ospf route exchange to get some routes populated into the tables.
 ```
 routing-instances{
-    kvrf1 {
-        protocols {
-            ospf {
-                area 0.0.0.0 {
-                    interface all;
-                }
+ kvrf1 {
+    routing-options {
+        router-id 192.168.53.250;
+        static {
+            route 192.168.240.3/32 discard;
+        }
+    }
+    protocols {
+        ospf {
+            export remote_via_bgp;
+            area 0.0.0.0 {
+                interface all;
             }
         }
-        interface ens8f1.2; ## 'ens8f1.2' is not defined
-        instance-type vrf;
-        route-distinguisher 192.168.80.1:1;
-        vrf-target target:65000:1;
     }
-}    
+    interface ens8f1.2; ## 'ens8f1.2' is not defined
+    instance-type vrf;
+    route-distinguisher 192.168.80.1:1;
+    vrf-target target:65000:1;
+}
+}  
 ```
-  **Known issue:** cRPD reports that the interface is not defined although it is present when running 'show interfaces routing' because is not present in the interfaces confiration section.
+
+No difference so L3VPN config here, see MP-BGP
+
+```
+protocols {
+    bgp {
+replace:
+        group mp-bgp {
+            type internal;
+            local-address 192.168.53.253;
+            family inet-vpn {
+                unicast;
+            }
+            family inet6 {
+                unicast;
+            }
+            family inet6-vpn {
+                unicast;
+            }
+            neighbor 192.168.53.254;
+        }
+    }
+}
+```
+
+Note:
+As of writing this doc, cRPD does not yet support LDP/SR, so any LSP requires manual setup.
+The guide will be extended with output from a daily image to have LDP/SR enabled LSP's in use. Please check with PLM on official release.
+
+
+  **Known issue:** cRPD reports that the vrf-interface ens8f1.2 is not defined although it is present when running 'show interfaces routing' because is not present in the [edit interfaces]  configuration section. This is expected as of now.
+
 
 The result on the host of this configuration is the creation of vrfs, tables as well as enslaving the interfaces to the vrfs. It can be verified in the following way.
 ### Verification
@@ -723,6 +766,244 @@ local 192.168.80.1 dev ens8f1.2 proto kernel scope host src 192.168.80.1
 broadcast 192.168.80.3 dev ens8f1.2 proto kernel scope link src 192.168.80.1
 192.168.240.1 via 192.168.80.2 dev ens8f1.2 proto 22
 ```
+
+Receiving inet-vpn NLRI via above configured BGP-session
+
+```
+root@crpd01# run show route receive-protocol bgp 192.168.53.254 
+
+inet.0: 37 destinations, 38 routes (37 active, 0 holddown, 0 hidden)
+
+inet.3: 1 destinations, 1 routes (1 active, 0 holddown, 0 hidden)
+
+kvrf1.inet.0: 8 destinations, 8 routes (8 active, 0 holddown, 0 hidden)
+  Prefix                  Nexthop              MED     Lclpref    AS path
+* 192.168.53.252/32       192.168.53.254               100        I
+* 192.168.240.2/32        192.168.53.254               100        I
+
+iso.0: 1 destinations, 1 routes (1 active, 0 holddown, 0 hidden)
+
+mpls.0: 7 destinations, 7 routes (7 active, 0 holddown, 0 hidden)
+
+bgp.l3vpn.0: 2 destinations, 2 routes (2 active, 0 holddown, 0 hidden)
+  Prefix                  Nexthop              MED     Lclpref    AS path
+  192.168.53.254:1:192.168.53.252/32                    
+*                         192.168.53.254               100        I
+  192.168.53.254:1:192.168.240.2/32                    
+*                         192.168.53.254               100        I
+```
+
+Show route receive-protocol detail to check the MPLS-labels received
+
+```
+root@crpd01# run show route receive-protocol bgp 192.168.53.254 detail 192.168.53.252/32 
+
+kvrf1.inet.0: 8 destinations, 8 routes (8 active, 0 holddown, 0 hidden)
+* 192.168.53.252/32 (1 entry, 1 announced)
+     Import Accepted
+     Route Distinguisher: 192.168.53.254:1
+     VPN Label: 300064                                 <<<< vpn label>>>>
+     Nexthop: 192.168.53.254
+     Localpref: 100
+     AS path: I 
+     Communities: target:65000:1
+
+bgp.l3vpn.0: 2 destinations, 2 routes (2 active, 0 holddown, 0 hidden)
+
+* 192.168.53.254:1:192.168.53.252/32 (1 entry, 0 announced)
+     Import Accepted
+     Route Distinguisher: 192.168.53.254:1
+     VPN Label: 300064
+     Nexthop: 192.168.53.254
+     Localpref: 100
+     AS path: I 
+     Communities: target:65000:1
+     ```
+
+Checking if the routes got instelled correctly in RIB/FIB
+Please note the MPLS-push
+
+```
+root@crpd01# run show route table kvrf1.inet.0 
+
+kvrf1.inet.0: 8 destinations, 8 routes (8 active, 0 holddown, 0 hidden)
++ = Active Route, - = Last Active, * = Both
+
+192.168.53.251/32  *[OSPF/10] 3d 17:13:46, metric 1
+                    >  to 192.168.80.2 via ens8f1.2
+192.168.53.252/32  *[BGP/170] 3d 17:13:44, localpref 100, from 192.168.53.254
+                      AS path: I, validation-state: unverified
+                    >  to 192.168.100.1 via ens8f0.500, Push 300064    <<< MPLS PUSH>>>
+192.168.80.0/30    *[Direct/0] 3d 17:14:01
+                    >  via ens8f1.2
+192.168.80.1/32    *[Local/0] 3d 17:14:01
+                       Local via ens8f1.2
+192.168.240.1/32   *[OSPF/150] 3d 17:13:46, metric 0, tag 0
+                    >  to 192.168.80.2 via ens8f1.2
+192.168.240.2/32   *[BGP/170] 3d 17:13:44, localpref 100, from 192.168.53.254
+                      AS path: I, validation-state: unverified
+                    >  to 192.168.100.1 via ens8f0.500, Push 300080      <<<< MPLS PUSH>>>>
+192.168.240.3/32   *[Static/5] 3d 17:14:01
+                       Discard
+224.0.0.5/32       *[OSPF/10] 3d 17:14:01, metric 1
+                       MultiRecv
+```
+
+
+
+Checking if pop-operations match the advertised routes
+```
+root@crpd01# run show route advertising-protocol bgp 192.168.53.254 detail 
+
+kvrf1.inet.0: 8 destinations, 8 routes (8 active, 0 holddown, 0 hidden)
+* 192.168.53.251/32 (1 entry, 1 announced)
+ BGP group mp-bgp type Internal
+     Route Distinguisher: 192.168.80.1:1
+     VPN Label: 16                      <<<< label 16 advertised>>>>
+     Nexthop: Self
+     Flags: Nexthop Change
+     MED: 1
+     Localpref: 100
+     AS path: [65000] I 
+     Communities: target:65000:1 rte-type:0.0.0.0:1:0
+
+
+root@crpd01# run show route table mpls.0 
+
+mpls.0: 7 destinations, 7 routes (7 active, 0 holddown, 0 hidden)
++ = Active Route, - = Last Active, * = Both
+
+0                  *[MPLS/0] 3d 17:15:02, metric 1
+                       Receive
+1                  *[MPLS/0] 3d 17:15:02, metric 1
+                       Receive
+2                  *[MPLS/0] 3d 17:15:02, metric 1
+                       Receive
+13                 *[MPLS/0] 3d 17:15:02, metric 1
+                       Receive
+16                 *[VPN/170] 3d 17:14:46
+                    >  to 192.168.80.2 via ens8f1.2, Pop      
+16(S=0)            *[VPN/170] 3d 17:14:46
+                    >  to 192.168.80.2 via ens8f1.2, Pop      <<< bottom_of_stack - matches>>>
+17                 *[VPN/170] 3d 17:14:46
+                       Discard
+```
+
+full config
+
+```
+root@crpd01# save terminal 
+## Last changed: 2020-06-08 15:44:31 UTC
+version 20200319.130545_builder.r1095278;
+system {
+    root-authentication {
+        encrypted-password "$6$.tkYp$oAmZU9IgOa4G.RVTq7yckxiAHEbZn3Vdc71TOv2/4hefozgIaw1R2LQrddLfu1QD1.bhFSTSwoEd8SvfqNDTe."; ## SECRET-DATA
+    }
+    inactive: processes {
+        routing {
+            bgp {
+                rib-sharding {
+                    number-of-shards 8;
+                }
+                update-threading {
+                    number-of-threads 8;
+                }
+            }
+        }
+    }
+}
+interfaces {
+    lo0 {
+        unit 0 {
+            family iso {
+                address 49.1000.1921.6805.3253.00;
+            }
+        }
+    }
+}
+policy-options {
+    
+    policy-statement remote_via_bgp {
+        from protocol bgp;
+        then accept;
+    }
+}
+routing-instances {
+
+    kvrf1 {
+        routing-options {
+            router-id 192.168.53.250;
+            static {
+                route 192.168.240.3/32 discard;
+            }
+        }
+        protocols {
+            ospf {
+                export remote_via_bgp;
+                area 0.0.0.0 {
+                    interface all;
+                }
+            }
+        }
+        interface ens8f1.2;
+        instance-type vrf;
+        route-distinguisher 192.168.80.1:1;
+        vrf-target target:65000:1;
+    }
+   
+}
+routing-options {
+    router-id 192.168.53.253;
+    autonomous-system 65000;
+    rib inet.0;
+    rib mpls.0;
+    static {
+        route 192.168.53.254/32 {
+            static-lsp-next-hop to_MX480;
+        }
+    }
+}
+protocols {
+    bgp {
+              group mp-bgp {
+            type internal;
+            local-address 192.168.53.253;
+            family inet-vpn {
+                unicast;
+            }
+            family inet6 {
+                unicast;
+            }
+            family inet6-vpn {
+                unicast;
+            }
+            neighbor 192.168.53.254;
+        }
+    }
+    isis {
+        level 1 disable;
+        interface ens8f0.500;
+        interface lo.0;
+        interface lo0.0;
+    }
+    mpls {
+        label-range {
+            static-label-range 1000000 1000100;
+        }
+        interface all;
+        static-label-switched-path to_MX480 {
+            ingress {
+                install 192.168.53.254/32 active;
+                next-hop 192.168.100.1;
+                to 192.168.53.254;
+            }
+        }
+    }
+}
+
+```
+
+
 In the above output it can be verified that the last route, 192.168.240.1 was learned through OSPF (proto 22).
 
 ## Scripts and usage
