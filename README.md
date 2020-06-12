@@ -770,7 +770,7 @@ broadcast 192.168.80.3 dev ens8f1.2 proto kernel scope link src 192.168.80.1
 Receiving inet-vpn NLRI via above configured BGP-session
 
 ```
-root@crpd01# run show route receive-protocol bgp 192.168.53.254 
+root@crpd01# run show route receive-protocol bgp 192.168.53.254
 
 inet.0: 37 destinations, 38 routes (37 active, 0 holddown, 0 hidden)
 
@@ -796,7 +796,7 @@ bgp.l3vpn.0: 2 destinations, 2 routes (2 active, 0 holddown, 0 hidden)
 Show route receive-protocol detail to check the MPLS-labels received
 
 ```
-root@crpd01# run show route receive-protocol bgp 192.168.53.254 detail 192.168.53.252/32 
+root@crpd01# run show route receive-protocol bgp 192.168.53.254 detail 192.168.53.252/32
 
 kvrf1.inet.0: 8 destinations, 8 routes (8 active, 0 holddown, 0 hidden)
 * 192.168.53.252/32 (1 entry, 1 announced)
@@ -805,7 +805,7 @@ kvrf1.inet.0: 8 destinations, 8 routes (8 active, 0 holddown, 0 hidden)
      VPN Label: 300064                                 <<<< vpn label>>>>
      Nexthop: 192.168.53.254
      Localpref: 100
-     AS path: I 
+     AS path: I
      Communities: target:65000:1
 
 bgp.l3vpn.0: 2 destinations, 2 routes (2 active, 0 holddown, 0 hidden)
@@ -816,15 +816,15 @@ bgp.l3vpn.0: 2 destinations, 2 routes (2 active, 0 holddown, 0 hidden)
      VPN Label: 300064
      Nexthop: 192.168.53.254
      Localpref: 100
-     AS path: I 
+     AS path: I
      Communities: target:65000:1
-     ```
+```
 
 Checking if the routes got instelled correctly in RIB/FIB
 Please note the MPLS-push
 
 ```
-root@crpd01# run show route table kvrf1.inet.0 
+root@crpd01# run show route table kvrf1.inet.0
 
 kvrf1.inet.0: 8 destinations, 8 routes (8 active, 0 holddown, 0 hidden)
 + = Active Route, - = Last Active, * = Both
@@ -853,7 +853,7 @@ kvrf1.inet.0: 8 destinations, 8 routes (8 active, 0 holddown, 0 hidden)
 
 Checking if pop-operations match the advertised routes
 ```
-root@crpd01# run show route advertising-protocol bgp 192.168.53.254 detail 
+root@crpd01# run show route advertising-protocol bgp 192.168.53.254 detail
 
 kvrf1.inet.0: 8 destinations, 8 routes (8 active, 0 holddown, 0 hidden)
 * 192.168.53.251/32 (1 entry, 1 announced)
@@ -864,11 +864,11 @@ kvrf1.inet.0: 8 destinations, 8 routes (8 active, 0 holddown, 0 hidden)
      Flags: Nexthop Change
      MED: 1
      Localpref: 100
-     AS path: [65000] I 
+     AS path: [65000] I
      Communities: target:65000:1 rte-type:0.0.0.0:1:0
 
 
-root@crpd01# run show route table mpls.0 
+root@crpd01# run show route table mpls.0
 
 mpls.0: 7 destinations, 7 routes (7 active, 0 holddown, 0 hidden)
 + = Active Route, - = Last Active, * = Both
@@ -892,7 +892,7 @@ mpls.0: 7 destinations, 7 routes (7 active, 0 holddown, 0 hidden)
 full config
 
 ```
-root@crpd01# save terminal 
+root@crpd01# save terminal
 ## Last changed: 2020-06-08 15:44:31 UTC
 version 20200319.130545_builder.r1095278;
 system {
@@ -922,7 +922,7 @@ interfaces {
     }
 }
 policy-options {
-    
+
     policy-statement remote_via_bgp {
         from protocol bgp;
         then accept;
@@ -950,7 +950,7 @@ routing-instances {
         route-distinguisher 192.168.80.1:1;
         vrf-target target:65000:1;
     }
-   
+
 }
 routing-options {
     router-id 192.168.53.253;
